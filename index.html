@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Kannada → English Image Translator (Client-side OCR)</title>
+
+<!-- Tesseract.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@v4.1.1/dist/tesseract.min.js"></script>
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Pacifico&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#071021;
+    --card-grad: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    --accent-grad: linear-gradient(90deg,#ff6b81,#8a2be2,#00f5ff);
+    --muted: #98a0b6;
+    --text: #e6eef7;
+  }
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;color:var(--text);background:linear-gradient(180deg,#02040a,#071021);overflow:auto}
+  .bg{
+    position:fixed;inset:0;z-index:-10;pointer-events:none;
+    background: radial-gradient(800px 600px at 12% 24%, rgba(138,43,226,0.06), transparent 8%),
+                radial-gradient(700px 500px at 84% 76%, rgba(255,107,129,0.05), transparent 12%),
+                linear-gradient(180deg,#02040a 0%, #071021 100%);
+    filter:blur(8px) contrast(110%);
+    animation: slowshift 25s linear infinite;
+  }
+  @keyframes slowshift{0%{transform:translateY(0)}50%{transform:translateY(6px)}100%{transform:translateY(0)}}
+
+  .wrap{max-width:1150px;margin:28px auto;padding:20px;border-radius:16px;background:var(--card-grad);box-shadow:0 18px 60px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+  .head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .brand{display:flex;gap:12px;align-items:center}
+  .logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#ff6b81,#8a2be2);display:flex;align-items:center;justify-content:center;font-weight:800;color:white;font-size:18px;box-shadow:0 8px 30px rgba(138,43,226,0.14)}
+  h1{margin:0;font-size:20px}
+  p.lead{margin:0;color:var(--muted);font-size:13px}
+
+  .top-controls{display:flex;gap:10px;align-items:center}
+  .btn{padding:10px 14px;border-radius:10px;background:linear-gradient(90deg,#ff6b81,#8a2be2);border:none;color:white;font-weight:600;cursor:pointer;box-shadow:0 8px 30px rgba(138,43,226,0.08)}
+  .btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text)}
+  .small{font-size:13px;color:var(--muted)}
+
+  .main{display:flex;gap:18px;margin-top:16px;align-items:flex-start}
+  .left{flex:0 0 360px}
+  .right{flex:1;min-width:320px}
+
+  .upload-card{border-radius:12px;padding:14px;background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.03)}
+  .dropbox{
+    width:76px;height:76px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.02);font-size:12px;color:var(--muted);margin:6px auto;user-select:none;
+  }
+  .hint{text-align:center;color:var(--muted);font-size:13px;margin-top:6px}
+  input[type=file]{display:none}
+
+  .settings{margin-top:12px;padding:10px;border-radius:8px;background:rgba(0,0,0,0.16);border:1px solid rgba(255,255,255,0.02)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+  /* preview area */
+  .preview-wrap{display:flex;gap:12px;flex-direction:column}
+  .canvas-row{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+  .canvas-card{flex:1;min-width:260px;border-radius:12px;padding:10px;background:rgba(255,255,255,0.01);border:1px solid rgba(255,255,255,0.02)}
+  canvas{max-width:100%;height:auto;border-radius:6px;background:#fff}
+
+  .progress{width:100%;height:10px;background:rgba(255,255,255,0.03);border-radius:8px;overflow:hidden;margin-top:8px}
+  .progress > i{display:block;height:100%;background:linear-gradient(90deg,#ff6b81,#8a2be2);width:0%}
+
+  .controls-foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+  .credits{font-family:Pacifico,cursive;color:rgba(255,255,255,0.9);font-size:18px;pointer-events:none}
+  .credits .sweep{position:relative;display:inline-block}
+  .credits .sweep::after{content:'';position:absolute;left:-120%;top:0;bottom:0;width:120%;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,0.18),rgba(255,255,255,0));transform:skewX(-10deg);animation: sweep 3.5s linear infinite}
+  @keyframes sweep{0%{left:-120%}50%{left:120%}100%{left:120%}}
+
+  .label{font-size:12px;color:var(--muted)}
+  .smallmuted{font-size:12px;color:var(--muted)}
+
+  @media (max-width:880px){
+    .main{flex-direction:column}
+    .left{width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+
+<div class="wrap" role="main">
+  <div class="head">
+    <div class="brand">
+      <div class="logo">KN→EN</div>
+      <div>
+        <h1>Kannada → English (Image) — Client OCR + Translate</h1>
+        <p class="lead">OCR runs in your browser (Tesseract.js). Extracted text is sent to a free translator endpoint. Two previews: original & translated. Download final image.</p>
+      </div>
+    </div>
+
+    <div class="top-controls">
+      <button id="downloadBtn" class="btn secondary">Download Translated</button>
+      <div id="themeToggle" style="cursor:pointer" title="Toggle light/dark" aria-pressed="false" class="smallmuted">Toggle Light</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="left">
+      <div class="upload-card" id="uploadCard">
+        <div style="text-align:center">
+          <div id="dropbox" class="dropbox" title="Click or drop file here">Drop / Click</div>
+          <div class="hint">Drag & drop or click the small box once. File dialog opens once only.</div>
+        </div>
+
+        <input id="fileInput" type="file" accept="image/*" />
+
+        <div class="settings">
+          <div class="row">
+            <button id="startBtn" class="btn">Start OCR & Translate</button>
+            <button id="resetBtn" class="btn secondary">Reset</button>
+            <button id="reocrBtn" class="btn secondary">Re-OCR</button>
+          </div>
+
+          <div style="margin-top:10px">
+            <div class="label">Translate Endpoint</div>
+            <select id="endpointSelect" style="width:100%;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--text)">
+              <option value="https://libretranslate.de/translate" selected>LibreTranslate (libretranslate.de) — default</option>
+              <option value="https://libretranslate.com/translate">LibreTranslate (libretranslate.com)</option>
+              <option value="custom">Custom (paste below)</option>
+            </select>
+            <input id="customEndpoint" placeholder="Custom translate URL (POST /translate)" style="width:100%;margin-top:8px;padding:8px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.04);display:none;color:var(--text)" />
+            <div class="smallmuted" style="margin-top:8px">Public endpoints can have limits — if you expect heavy traffic, self-host a translator and paste its URL here.</div>
+          </div>
+
+          <div style="margin-top:8px" class="row">
+            <label class="label">Show boxes</label>
+            <input id="showBoxes" type="checkbox" checked />
+            <label class="label">Target language</label>
+            <select id="targetLang" style="padding:6px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--text)">
+              <option value="en" selected>English (en)</option>
+            </select>
+          </div>
+
+          <div style="margin-top:8px">
+            <div class="label">OCR Progress</div>
+            <div class="progress"><i id="ocrBar"></i></div>
+            <div id="status" class="smallmuted" style="margin-top:6px">Idle</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="preview-wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="label">Preview — Original (left) & Translated (right)</div>
+          <div class="smallmuted" id="wordCount">Words: 0</div>
+        </div>
+
+        <div class="canvas-row">
+          <div class="canvas-card">
+            <div class="label">Original</div>
+            <canvas id="origCanvas" width="600" height="800" aria-label="Original preview"></canvas>
+          </div>
+
+          <div class="canvas-card">
+            <div class="label">Translated</div>
+            <canvas id="transCanvas" width="600" height="800" aria-label="Translated preview"></canvas>
+          </div>
+        </div>
+
+        <div class="controls-foot">
+          <div class="smallmuted">Workflow: Upload → OCR (in browser) → Translate via endpoint → Apply → Download</div>
+          <div class="credits"><span class="sweep">Created by Animesh</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Single-file polished app:
+   - Tesseract.js for Kannada OCR (language code 'kan')
+   - Default translator: https://libretranslate.de/translate (no key)
+   - Uses line-level translation but uses word/line boxes for erasing & alignment
+   - Two canvases: original & translated
+*/
+
+/* ---------- Config ---------- */
+let TRANSLATE_API_URL = 'https://libretranslate.de/translate';
+const OCR_LANG = 'kan'; // Tesseract 'kan' tessdata
+const DEFAULT_TARGET = 'en';
+
+/* ---------- Elements ---------- */
+const dropbox = document.getElementById('dropbox');
+const fileInput = document.getElementById('fileInput');
+const startBtn = document.getElementById('startBtn');
+const resetBtn = document.getElementById('resetBtn');
+const reocrBtn = document.getElementById('reocrBtn');
+const ocrBar = document.getElementById('ocrBar');
+const statusEl = document.getElementById('status');
+const origCanvas = document.getElementById('origCanvas');
+const transCanvas = document.getElementById('transCanvas');
+const ctxOrig = origCanvas.getContext('2d', { willReadFrequently: true});
+const ctxTrans = transCanvas.getContext('2d', { willReadFrequently: true});
+const showBoxes = document.getElementById('showBoxes');
+const downloadBtn = document.getElementById('downloadBtn');
+const endpointSelect = document.getElementById('endpointSelect');
+const customEndpoint = document.getElementById('customEndpoint');
+const targetLang = document.getElementById('targetLang');
+const wordCountEl = document.getElementById('wordCount');
+const themeToggle = document.getElementById('themeToggle');
+
+let imgObj = null; // HTMLImageElement
+let ocrData = null; // Tesseract result data
+let translatedLines = []; // {id, text, translated, bbox, words: [{bbox}]}
+
+/* ---------- UI behavior (drag & single click) ---------- */
+let fileDialogOpened = false;
+dropbox.addEventListener('click', ()=> {
+  // single click opens file dialog once
+  fileInput.click();
+});
+fileInput.addEventListener('click', ()=> { /* no-op; prevents double */ });
+
+['dragenter','dragover'].forEach(ev => {
+  dropbox.addEventListener(ev, e => { e.preventDefault(); dropbox.style.borderColor='rgba(255,107,129,0.6)'; });
+});
+['dragleave','drop'].forEach(ev => {
+  dropbox.addEventListener(ev, e => { e.preventDefault(); dropbox.style.borderColor='rgba(255,255,255,0.06)'; });
+});
+dropbox.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+fileInput.addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) handleFile(f);
+  // reset input value so same file can be selected again
+  fileInput.value = '';
+});
+
+/* endpoint select */
+endpointSelect.addEventListener('change', ()=>{
+  if (endpointSelect.value === 'custom') {
+    customEndpoint.style.display = 'block';
+    TRANSLATE_API_URL = customEndpoint.value || TRANSLATE_API_URL;
+  } else {
+    customEndpoint.style.display = 'none';
+    TRANSLATE_API_URL = endpointSelect.value;
+  }
+});
+customEndpoint.addEventListener('input', ()=> TRANSLATE_API_URL = customEndpoint.value);
+
+/* theme toggle */
+themeToggle.addEventListener('click', ()=> {
+  const pressed = themeToggle.getAttribute('aria-pressed') === 'true';
+  themeToggle.setAttribute('aria-pressed', String(!pressed));
+  if (!pressed){
+    // switch to light
+    document.body.style.background = 'linear-gradient(180deg,#f7f8fb,#eef2ff)';
+    document.documentElement.style.setProperty('--text','#0b1020');
+    document.documentElement.style.setProperty('--muted','#55607a');
+  } else {
+    document.body.style.background = 'linear-gradient(180deg,#02040a,#071021)';
+    document.documentElement.style.setProperty('--text','#e6eef7');
+    document.documentElement.style.setProperty('--muted','#98a0b6');
+  }
+});
+
+/* ---------- File handling & drawing ---------- */
+function handleFile(file) {
+  if (!file.type.startsWith('image/')) { alert('Please upload an image file'); return; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      imgObj = img;
+      // scale canvases to image while limiting width for UX
+      const maxW = 850;
+      const scale = Math.min(1, maxW / img.width);
+      origCanvas.width = Math.round(img.width * scale);
+      origCanvas.height = Math.round(img.height * scale);
+      transCanvas.width = origCanvas.width;
+      transCanvas.height = origCanvas.height;
+      // draw original
+      ctxOrig.clearRect(0,0,origCanvas.width, origCanvas.height);
+      ctxOrig.drawImage(img, 0, 0, origCanvas.width, origCanvas.height);
+      // copy to trans initially
+      ctxTrans.clearRect(0,0,transCanvas.width, transCanvas.height);
+      ctxTrans.drawImage(img, 0, 0, transCanvas.width, transCanvas.height);
+      status('Image loaded. Ready to OCR.');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---------- Helpers ---------- */
+function status(msg){ statusEl.textContent = msg; }
+function setProgress(p){ ocrBar.style.width = Math.max(0,Math.min(100,p)) + '%'; }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+/* ---------- OCR: Tesseract worker ---------- */
+async function doOCR(){
+  if (!imgObj) { alert('Please upload an image first'); return; }
+  ocrData = null;
+  translatedLines = [];
+  setProgress(2);
+  status('Loading Tesseract worker...');
+  const worker = Tesseract.createWorker({
+    logger: m => {
+      if (m.status && m.progress != null){
+        setProgress(Math.round(m.progress*100));
+        status(`${m.status} ${(m.progress*100).toFixed(0)}%`);
+      }
+    }
+  });
+  try {
+    await worker.load();
+    await worker.loadLanguage(OCR_LANG);
+    await worker.initialize(OCR_LANG);
+    // recognize on dataURL of original canvas (scaled)
+    const dataUrl = origCanvas.toDataURL('image/png');
+    const res = await worker.recognize(dataUrl, { tessedit_pageseg_mode: Tesseract.PSM.AUTO });
+    ocrData = res.data || {};
+    await worker.terminate();
+    status('OCR finished');
+    setProgress(100);
+    buildLinesFromOCR();
+  } catch(e){
+    console.error(e);
+    status('OCR error: ' + (e.message || e));
+  }
+}
+
+/* Build line-level segments but keep word boxes for better alignment */
+function buildLinesFromOCR(){
+  translatedLines = [];
+  if (!ocrData) { status('No OCR data'); return; }
+  const lines = ocrData.lines || [];
+  const words = ocrData.words || [];
+  // If no lines, fall back to grouping words by line_num
+  if ((!lines || lines.length===0) && words && words.length){
+    const map = {};
+    words.forEach(w => {
+      const ln = w.line_num || '0';
+      if (!map[ln]) map[ln] = [];
+      map[ln].push(w);
+    });
+    let id=0;
+    for (const k in map){
+      const arr = map[k];
+      // compute bbox union
+      const bbox = arr.reduce((acc,w)=> {
+        const b = w.bbox || (w.boundingBox ? w.boundingBox : {x0: w.x0||0, y0: w.y0||0, x1:(w.x0||0)+ (w.width||0), y1:(w.y0||0)+(w.height||0)});
+        acc.x0 = Math.min(acc.x0, b.x0);
+        acc.y0 = Math.min(acc.y0, b.y0);
+        acc.x1 = Math.max(acc.x1, b.x1 || (b.x0 + (b.w||0)));
+        acc.y1 = Math.max(acc.y1, b.y1 || (b.y0 + (b.h||0)));
+        return acc;
+      }, {x0:1e9,y0:1e9,x1:0,y1:0});
+      const txt = arr.map(a=>a.text).join(' ');
+      translatedLines.push({
+        id: id++,
+        text: txt,
+        translated: null,
+        bbox: { x: bbox.x0, y: bbox.y0, w: bbox.x1 - bbox.x0, h: bbox.y1 - bbox.y0 },
+        words: arr.map(w=>({ bbox: normalizeBBox(w.bbox || {x0:w.x0||0,y0:w.y0||0,x1:(w.x0||0)+(w.width||0),y1:(w.y0||0)+(w.height||0)}), text: w.text }))
+      });
+    }
+  } else {
+    // use lines
+    lines.forEach((ln, idx) => {
+      const b = ln.bbox || ln.boundingBox || { x0: ln.x0||0, y0: ln.y0||0, x1: (ln.x1||0), y1: (ln.y1||0) };
+      // collect words that fall into this line's approximate y-range
+      const lineWords = (ocrData.words || []).filter(w => {
+        const wb = w.bbox || {x0:w.x0||0,y0:w.y0||0,x1:(w.x0||0)+(w.width||0),y1:(w.y0||0)+(w.height||0)};
+        // overlap in y
+        return (wb.y0 < (b.y1 || (b.y0 + (b.h||16))) && wb.y1 > (b.y0 || 0));
+      }).map(w => ({ bbox: normalizeBBox(w.bbox||{x0:w.x0||0,y0:w.y0||0,x1:(w.x0||0)+(w.width||0),y1:(w.y0||0)+(w.height||0)}), text:w.text }));
+      translatedLines.push({
+        id: idx,
+        text: ln.text,
+        translated: null,
+        bbox: normalizeBBox({ x0: b.x0||b.x||0, y0: b.y0||b.y||0, w: (b.x1? (b.x1 - b.x0) : (b.w||0)), h: (b.y1? (b.y1 - b.y0) : (b.h||0)) }),
+        words: lineWords
+      });
+    });
+  }
+
+  wordCountEl.textContent = 'Words: ' + (ocrData.words ? ocrData.words.length : 0);
+  // draw boxes on both canvases for preview
+  drawBoxesOnOrig();
+}
+
+/* normalize various bbox shapes to {x,y,w,h} */
+function normalizeBBox(b){
+  if (!b) return {x:0,y:0,w:0,h:0};
+  if (b.x0 !== undefined && b.y0 !== undefined && b.x1 !== undefined && b.y1 !== undefined) {
+    return { x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 };
+  }
+  if (b.x !== undefined && b.y !== undefined && b.w !== undefined && b.h !== undefined) {
+    return { x: b.x, y: b.y, w: b.w, h: b.h };
+  }
+  if (b.x0 !== undefined && b.y0 !== undefined && (b.w || b.h)) {
+    return { x: b.x0, y: b.y0, w: b.w||0, h: b.h||0 };
+  }
+  // fallback
+  return { x:0,y:0,w:0,h:0 };
+}
+
+/* draw bounding boxes from OCR on original canvas */
+function drawBoxesOnOrig(){
+  if (!imgObj || !ocrData) return;
+  // redraw original image (scaled on canvas)
+  ctxOrig.clearRect(0,0,origCanvas.width, origCanvas.height);
+  ctxOrig.drawImage(imgObj, 0, 0, origCanvas.width, origCanvas.height);
+  ctxTrans.clearRect(0,0,transCanvas.width, transCanvas.height);
+  ctxTrans.drawImage(imgObj, 0, 0, transCanvas.width, transCanvas.height);
+
+  // scaling factors: Tesseract returns bboxes relative to input image passed to recognize (which was the canvas dataURL).
+  // We used origCanvas for recognition, so coordinates should match canvas pixel space. But be defensive:
+  const scaleX = origCanvas.width / (ocrData.image ? (ocrData.image.width || origCanvas.width) : origCanvas.width);
+  const scaleY = origCanvas.height / (ocrData.image ? (ocrData.image.height || origCanvas.height) : origCanvas.height);
+
+  translatedLines.forEach(line => {
+    const b = line.bbox;
+    const x = (b.x || 0) * scaleX;
+    const y = (b.y || 0) * scaleY;
+    const w = (b.w || origCanvas.width) * scaleX;
+    const h = (b.h || 20) * scaleY;
+    if (showBoxes.checked){
+      ctxOrig.save();
+      ctxOrig.strokeStyle = 'rgba(255,107,129,0.6)';
+      ctxOrig.lineWidth = 1.6;
+      ctxOrig.strokeRect(x, y, w, h);
+      ctxOrig.restore();
+      ctxTrans.save();
+      ctxTrans.strokeStyle = 'rgba(255,107,129,0.6)';
+      ctxTrans.lineWidth = 1.6;
+      ctxTrans.strokeRect(x, y, w, h);
+      ctxTrans.restore();
+    }
+    // optionally annotate with index for debugging (comment out in production)
+    // ctxOrig.fillStyle = 'rgba(255,255,255,0.7)'; ctxOrig.fillText(line.id, x+2,y+2);
+  });
+}
+
+/* ---------- Translation ---------- */
+/* Translate each LINE (better context) sequentially to avoid hammering endpoint */
+async function translateAllLines(){
+  if (!translatedLines.length) return;
+  for (let i=0;i<translatedLines.length;i++){
+    const ln = translatedLines[i];
+    status(`Translating ${i+1}/${translatedLines.length}`);
+    try{
+      const result = await translateText(ln.text);
+      translatedLines[i].translated = result;
+    } catch(e){
+      console.error(e);
+      translatedLines[i].translated = ln.text; // fallback to original
+    }
+    await sleep(150); // small throttle
+  }
+}
+
+/* translateText(): calls TRANSLATE_API_URL with JSON { q, source, target } and expects { translatedText } */
+async function translateText(text){
+  const payload = { q: text, source: 'kn', target: targetLang.value || DEFAULT_TARGET, format: 'text' };
+  const resp = await fetch(TRANSLATE_API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (!resp.ok) throw new Error('Translation API error ' + resp.status);
+  const j = await resp.json();
+  if (j.translatedText) return j.translatedText;
+  if (j.responseData && j.responseData.translatedText) return j.responseData.translatedText;
+  // fallback if API returns other fields
+  if (typeof j === 'string') return j;
+  // join probable fields
+  for (const f of ['translation','result','translated','data']) if (j[f]) return j[f];
+  return text;
+}
+
+/* ---------- Draw translated output onto transCanvas ---------- */
+function renderTranslatedCanvas(applyErase = true){
+  if (!imgObj) return;
+  // redraw image first
+  ctxTrans.clearRect(0,0,transCanvas.width, transCanvas.height);
+  ctxTrans.drawImage(imgObj, 0, 0, transCanvas.width, transCanvas.height);
+
+  const scaleX = transCanvas.width / (ocrData.image ? (ocrData.image.width || transCanvas.width) : transCanvas.width);
+  const scaleY = transCanvas.height / (ocrData.image ? (ocrData.image.height || transCanvas.height) : transCanvas.height);
+
+  ctxTrans.textBaseline = 'top';
+  translatedLines.forEach(line => {
+    const b = line.bbox;
+    const x = (b.x || 0) * scaleX;
+    const y = (b.y || 0) * scaleY;
+    const w = (b.w || Math.max(50, transCanvas.width*0.5)) * scaleX;
+    const h = (b.h || 20) * scaleY;
+
+    // paint a background rectangle slightly larger to "erase" original Kannada for readability
+    if (applyErase){
+      ctxTrans.save();
+      // sample background color? (complex). We use a nearly-opaque white for readability for printed pages.
+      // If you want transparent background instead, adjust fillStyle.
+      ctxTrans.fillStyle = 'rgba(255,255,255,0.95)';
+      ctxTrans.fillRect(x - 2, y - 2, Math.max(8, w + 4), Math.max(8, h + 4));
+      ctxTrans.restore();
+    }
+
+    // draw translated line text, wrapped in the line box
+    const text = (line.translated != null) ? line.translated : line.text;
+    // compute font size based on box height
+    let fontSize = Math.max(12, Math.min(Math.round(h * 0.8), 28));
+    ctxTrans.font = `${fontSize}px Inter, Arial`;
+    ctxTrans.fillStyle = '#111'; // dark text over white rect
+    const padding = 6;
+    const wrapped = wrapText(ctxTrans, text, Math.max(20, w - padding*2));
+    let yPos = y + padding;
+    wrapped.forEach(lineText => {
+      ctxTrans.fillText(lineText, x + padding, yPos);
+      yPos += fontSize * 1.05;
+    });
+
+    // optional: draw word boxes lightly if user wants (we already do via showBoxes)
+    if (showBoxes.checked) {
+      ctxTrans.save();
+      ctxTrans.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctxTrans.lineWidth = 1;
+      ctxTrans.strokeRect(x, y, w, h);
+      ctxTrans.restore();
+    }
+  });
+}
+
+/* simple text wrapper */
+function wrapText(ctx, text, maxWidth){
+  if (!text) return [];
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  words.forEach(w => {
+    const test = current ? current + ' ' + w : w;
+    const m = ctx.measureText(test);
+    if (m.width > maxWidth && current) {
+      lines.push(current);
+      current = w;
+    } else {
+      current = test;
+    }
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+
+/* ---------- Main pipeline ---------- */
+startBtn.addEventListener('click', async ()=>{
+  // determine endpoint
+  if (endpointSelect.value === 'custom') TRANSLATE_API_URL = customEndpoint.value || TRANSLATE_API_URL;
+  else TRANSLATE_API_URL = endpointSelect.value;
+  if (!imgObj) { alert('Please upload an image first'); return; }
+  await doOCR();
+  if (!translatedLines.length) { status('No text found'); return; }
+  await translateAllLines();
+  renderTranslatedCanvas(true);
+  status('Done. You can download translated image.');
+});
+
+/* re-OCR */
+reocrBtn.addEventListener('click', async ()=> {
+  if (!imgObj) return alert('Upload image first');
+  await doOCR();
+});
+
+/* reset */
+resetBtn.addEventListener('click', ()=> {
+  if (!imgObj) return;
+  ctxOrig.clearRect(0,0,origCanvas.width, origCanvas.height);
+  ctxTrans.clearRect(0,0,transCanvas.width, transCanvas.height);
+  ctxOrig.drawImage(imgObj, 0, 0, origCanvas.width, origCanvas.height);
+  ctxTrans.drawImage(imgObj, 0, 0, transCanvas.width, transCanvas.height);
+  ocrData = null;
+  translatedLines = [];
+  setProgress(0);
+  status('Reset to original');
+  wordCountEl.textContent = 'Words: 0';
+});
+
+/* download final image (from translated canvas) */
+downloadBtn.addEventListener('click', ()=>{
+  if (!imgObj) return alert('Nothing to download');
+  const link = document.createElement('a');
+  link.href = transCanvas.toDataURL('image/png');
+  link.download = 'translated-image.png';
+  link.click();
+});
+
+/* ---------- Initialization ---------- */
+setProgress(0);
+status('Idle');
+
+/* ---------- Note: If you want perfect pixel mapping in some edge cases:
+   - Tesseract coordinates should match the canvas used for recognition (we used origCanvas).
+   - If you change that, update scale factors accordingly.
+*/
+
+</script>
+</body>
+</html>
