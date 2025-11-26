@@ -1,618 +1,197 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Kannada → English — Transliteration & Translation (Client OCR)</title>
-
-<!-- Tesseract.js -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@v4.1.1/dist/tesseract.min.js"></script>
-
-<!-- Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Pacifico&display=swap" rel="stylesheet">
+<meta charset="UTF-8">
+<title>Kannada → English Image Translator</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<script src="https://unpkg.com/aksharamukha-js/dist/aksharamukha.js"></script>
 
 <style>
-:root{
-  --bg:#071021;
-  --card-grad: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-  --accent: linear-gradient(90deg,#ff6b81,#8a2be2);
-  --text:#e6eef7;
-  --muted:#98a0b6;
-}
-*{box-sizing:border-box}
-html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;color:var(--text);background:linear-gradient(180deg,#02040a,#071021);-webkit-font-smoothing:antialiased;overflow:auto}
-.bg{position:fixed;inset:0;z-index:-10;pointer-events:none;background:
-  radial-gradient(800px 600px at 12% 24%, rgba(138,43,226,0.06), transparent 8%),
-  radial-gradient(700px 500px at 84% 76%, rgba(255,107,129,0.05), transparent 12%),
-  linear-gradient(180deg,#02040a 0%, #071021 100%);filter:blur(8px) contrast(110%);animation:slowshift 25s linear infinite}
-@keyframes slowshift{0%{transform:translateY(0)}50%{transform:translateY(6px)}100%{transform:translateY(0)}}
-
-.container{max-width:1150px;margin:28px auto;padding:20px;border-radius:16px;background:var(--card-grad);box-shadow:0 18px 60px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
-.header{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.brand{display:flex;gap:12px;align-items:center}
-.logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#ff6b81,#8a2be2);display:flex;align-items:center;justify-content:center;font-weight:800;color:white;font-size:18px;box-shadow:0 8px 30px rgba(138,43,226,0.14)}
-h1{margin:0;font-size:20px}
-.lead{margin:0;color:var(--muted);font-size:13px}
-
-.controls{display:flex;gap:8px;align-items:center}
-.btn{padding:10px 14px;border-radius:10px;background:linear-gradient(90deg,#ff6b81,#8a2be2);border:none;color:white;font-weight:600;cursor:pointer}
-.btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text)}
-
-.main{display:flex;gap:18px;margin-top:18px;align-items:flex-start}
-.left{flex:0 0 360px}
-.right{flex:1;min-width:320px}
-
-/* upload */
-.card{border-radius:12px;padding:14px;background:rgba(255,255,255,0.01);border:1px dashed rgba(255,255,255,0.03)}
-.dropbox{width:76px;height:76px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.02);font-size:12px;color:var(--muted);margin:6px auto;user-select:none}
-.hint{text-align:center;color:var(--muted);font-size:13px}
-input[type=file]{display:none}
-
-/* preview */
-.preview{display:flex;flex-direction:column;gap:12px}
-.canvasRow{display:flex;gap:12px;flex-wrap:wrap}
-.canvasCard{flex:1;min-width:260px;border-radius:12px;padding:10px;background:rgba(255,255,255,0.01);border:1px solid rgba(255,255,255,0.02)}
-canvas{max-width:100%;height:auto;border-radius:6px;background:#fff}
-
-.progress{width:100%;height:10px;background:rgba(255,255,255,0.03);border-radius:8px;overflow:hidden;margin-top:8px}
-.progress i{display:block;height:100%;background:linear-gradient(90deg,#ff6b81,#8a2be2);width:0%}
-
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.label{font-size:12px;color:var(--muted)}
-.small{font-size:13px;color:var(--muted)}
-
-.credits{font-family:Pacifico,cursive;color:rgba(255,255,255,0.9);font-size:18px}
-.credits .sweep{position:relative;display:inline-block}
-.credits .sweep::after{content:'';position:absolute;left:-120%;top:0;bottom:0;width:120%;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,0.18),rgba(255,255,255,0));transform:skewX(-10deg);animation:sweep 3.5s linear infinite}
-@keyframes sweep{0%{left:-120%}50%{left:120%}100%{left:120%}}
-
-@media (max-width:880px){.main{flex-direction:column}.left{width:100%}}
+    body {
+        font-family: sans-serif;
+        background: radial-gradient(circle at top, #111, #000);
+        color: white;
+        text-align: center;
+        padding: 30px;
+    }
+    .container {
+        margin-top: 20px;
+        display: flex;
+        justify-content: space-around;
+        flex-wrap: wrap;
+        gap: 25px;
+    }
+    canvas {
+        border: 2px solid #444;
+        border-radius: 10px;
+        max-width: 360px;
+    }
+    #uploadBox {
+        border: 2px dashed #888;
+        width: 110px;
+        height: 110px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        border-radius: 10px;
+    }
+    .btn {
+        margin-top: 8px;
+        padding: 10px 20px;
+        border-radius: 10px;
+        border: none;
+        cursor: pointer;
+        background: #ff0077;
+        color: white;
+        font-size: 14px;
+    }
+    #credit {
+        margin-top: 50px;
+        font-family: cursive;
+        font-size: 22px;
+        background: linear-gradient(90deg, #ff4c4c, #ffaa00, #00ffee, #ff4c4c);
+        -webkit-background-clip: text;
+        color: transparent;
+        animation: glow 2s linear infinite;
+    }
+    @keyframes glow {
+        0% { filter: brightness(0.7); }
+        50% { filter: brightness(1.7); }
+        100% { filter: brightness(0.7); }
+    }
 </style>
 </head>
+
 <body>
-<div class="bg" aria-hidden="true"></div>
 
-<div class="container" role="main">
-  <div class="header">
-    <div class="brand">
-      <div class="logo">KN→EN</div>
-      <div>
-        <h1>Kannada → Transliteration & Translation</h1>
-        <p class="lead">Client-side OCR (Tesseract). Two outputs: transliteration (Latin letters) and translation (English meaning). Download both images.</p>
-      </div>
+<h2> Kannada → English OCR + Transliteration + Meaning</h2>
+<label id="uploadBox">
+    <input type="file" id="file" hidden accept="image/*">
+    Upload
+</label>
+
+<div id="status"></div>
+
+<div class="container">
+    <div>
+        <canvas id="orig"></canvas>
+        <p>Original</p>
     </div>
-
-    <div class="controls">
-      <button id="downloadTranslit" class="btn secondary">Download Transliteration</button>
-      <button id="downloadTrans" class="btn secondary">Download Translation</button>
-      <div id="themeToggle" style="cursor:pointer;color:var(--muted)">Toggle Light</div>
+    <div>
+        <canvas id="translit"></canvas>
+        <p>Transliteration</p>
+        <button class="btn" onclick="downloadCanvas('translit')">Download</button>
     </div>
-  </div>
-
-  <div class="main">
-    <div class="left">
-      <div class="card" id="uploadCard">
-        <div style="text-align:center">
-          <div id="dropbox" class="dropbox" title="Click or drop file here">Drop / Click</div>
-          <div class="hint">Drag & drop or click the small box once. File dialog opens only once per selection.</div>
-        </div>
-
-        <input id="fileInput" type="file" accept="image/*" />
-
-        <div style="margin-top:12px">
-          <div class="row">
-            <button id="startBtn" class="btn">Start OCR & Convert</button>
-            <button id="resetBtn" class="btn secondary">Reset</button>
-          </div>
-
-          <div style="margin-top:10px" class="card">
-            <div class="label">Translate Endpoint</div>
-            <select id="endpointSelect" style="width:100%;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--text)">
-              <option value="https://libretranslate.de/translate" selected>LibreTranslate (libretranslate.de) - default</option>
-              <option value="https://libretranslate.com/translate">LibreTranslate (libretranslate.com)</option>
-              <option value="custom">Custom</option>
-            </select>
-            <input id="customEndpoint" placeholder="Custom translate URL (POST /translate)" style="width:100%;margin-top:8px;padding:8px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.04);display:none;color:var(--text)" />
-            <div class="small" style="margin-top:8px">Public endpoints are often fine for light use. Self-host LibreTranslate to remove limits.</div>
-            <div style="margin-top:8px">
-              <div class="label">Target language</div>
-              <select id="targetLang" style="padding:6px;border-radius:6px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--text)">
-                <option value="en" selected>English (en)</option>
-              </select>
-            </div>
-          </div>
-
-          <div style="margin-top:8px">
-            <div class="label">OCR Progress</div>
-            <div class="progress"><i id="ocrBar"></i></div>
-            <div id="status" class="small" style="margin-top:6px">Idle</div>
-          </div>
-        </div>
-
-      </div>
+    <div>
+        <canvas id="translated"></canvas>
+        <p>Translation</p>
+        <button class="btn" onclick="downloadCanvas('translated')">Download</button>
     </div>
-
-    <div class="right">
-      <div class="preview">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="label">Preview: Original (top) → Transliteration (middle) → Translation (bottom)</div>
-          <div class="small" id="wordCount">Words: 0</div>
-        </div>
-
-        <div class="canvasRow">
-          <div class="canvasCard">
-            <div class="label">Original</div>
-            <canvas id="origCanvas" width="700" height="900" aria-label="Original preview"></canvas>
-          </div>
-        </div>
-
-        <div class="canvasRow">
-          <div class="canvasCard">
-            <div class="label">Transliteration (Latin letters)</div>
-            <canvas id="translitCanvas" width="700" height="900" aria-label="Transliteration preview"></canvas>
-          </div>
-        </div>
-
-        <div class="canvasRow">
-          <div class="canvasCard">
-            <div class="label">Translation (English meaning)</div>
-            <canvas id="transCanvas" width="700" height="900" aria-label="Translation preview"></canvas>
-          </div>
-        </div>
-
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="small">Workflow: Upload → OCR (browser) → Transliterate (client) → Translate (LibreTranslate) → Apply → Download</div>
-          <div class="credits"><span class="sweep">Created by Animesh</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
 </div>
 
+<div id="credit">Created by Animesh</div>
+
 <script>
-/*
-  Single-file app:
-  - OCR: Tesseract.js with Kannada ('kan')
-  - Transliteration: in-browser approximate mapping (covers basic letters & vowel signs)
-  - Translation: LibreTranslate public endpoint (default)
-  - Produces two canvases with English text replacing Kannada at same bbox locations
-  - Centered replacement (Option 3)
-*/
+const fileInput = document.getElementById("file");
+fileInput.addEventListener("change", startProcessing);
 
-/* ---------- Config ---------- */
-let TRANSLATE_API_URL = 'https://libretranslate.de/translate'; // default public
-const OCR_LANG = 'kan';
-const DEFAULT_TARGET = 'en';
-
-/* ---------- DOM refs ---------- */
-const dropbox = document.getElementById('dropbox');
-const fileInput = document.getElementById('fileInput');
-const startBtn = document.getElementById('startBtn');
-const resetBtn = document.getElementById('resetBtn');
-const ocrBar = document.getElementById('ocrBar');
-const statusEl = document.getElementById('status');
-const origCanvas = document.getElementById('origCanvas');
-const translitCanvas = document.getElementById('translitCanvas');
-const transCanvas = document.getElementById('transCanvas');
-const ctxOrig = origCanvas.getContext('2d', { willReadFrequently: true });
-const ctxTranslit = translitCanvas.getContext('2d', { willReadFrequently: true });
-const ctxTrans = transCanvas.getContext('2d', { willReadFrequently: true });
-const endpointSelect = document.getElementById('endpointSelect');
-const customEndpoint = document.getElementById('customEndpoint');
-const targetLang = document.getElementById('targetLang');
-const wordCount = document.getElementById('wordCount');
-const downloadTranslit = document.getElementById('downloadTranslit');
-const downloadTrans = document.getElementById('downloadTrans');
-const themeToggle = document.getElementById('themeToggle');
-
-let img = null;
-let ocrData = null;         // Tesseract result
-let lines = [];            // [{id,text,bbox,words:[{bbox,text}]}]
-let translatedLines = [];  // [{id,translated,...}]
-let transliteratedLines = [];
-
-/* ---------- Small UI helpers ---------- */
-function status(s){ statusEl.textContent = s; }
-function setProgress(p){ ocrBar.style.width = Math.max(0,Math.min(100,p)) + '%'; }
-function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-
-/* ---------- Drag & click logic (single prompt) ---------- */
-dropbox.addEventListener('click', ()=> fileInput.click());
-['dragenter','dragover'].forEach(e => dropbox.addEventListener(e, ev => { ev.preventDefault(); dropbox.style.borderColor='rgba(255,107,129,0.6)'; }));
-['dragleave','drop'].forEach(e => dropbox.addEventListener(e, ev => { ev.preventDefault(); dropbox.style.borderColor='rgba(255,255,255,0.06)'; }));
-dropbox.addEventListener('drop', ev => {
-  ev.preventDefault();
-  const f = ev.dataTransfer.files && ev.dataTransfer.files[0];
-  if (f) handleFile(f);
-});
-fileInput.addEventListener('change', ev => {
-  const f = ev.target.files && ev.target.files[0];
-  if (f) handleFile(f);
-  fileInput.value = ''; // reset so same file can be chosen again without double prompt
-});
-
-/* endpoint UI */
-endpointSelect.addEventListener('change', () => {
-  if (endpointSelect.value === 'custom') { customEndpoint.style.display = 'block'; TRANSLATE_API_URL = customEndpoint.value || TRANSLATE_API_URL; }
-  else { customEndpoint.style.display = 'none'; TRANSLATE_API_URL = endpointSelect.value; }
-});
-customEndpoint.addEventListener('input', ()=> TRANSLATE_API_URL = customEndpoint.value);
-
-/* theme toggle */
-themeToggle.addEventListener('click', ()=> {
-  if (document.body.style.background.includes('#f7f8fb')) {
-    document.body.style.background = 'linear-gradient(180deg,#02040a,#071021)';
-  } else {
-    document.body.style.background = 'linear-gradient(180deg,#f7f8fb,#eef2ff)';
-  }
-});
-
-/* ---------- File handling & canvas sizing ---------- */
-function handleFile(file){
-  if (!file.type.startsWith('image/')) { alert('Please upload an image'); return; }
-  const reader = new FileReader();
-  reader.onload = e => {
-    const im = new Image();
-    im.onload = () => {
-      img = im;
-      // limit width for UX and scale canvases equally
-      const maxW = 900;
-      const scale = Math.min(1, maxW / im.width);
-      const w = Math.round(im.width * scale);
-      const h = Math.round(im.height * scale);
-      [origCanvas, translitCanvas, transCanvas].forEach(c => { c.width = w; c.height = h; });
-      ctxOrig.clearRect(0,0,origCanvas.width, origCanvas.height);
-      ctxOrig.drawImage(im, 0, 0, origCanvas.width, origCanvas.height);
-      ctxTranslit.clearRect(0,0,translitCanvas.width, translitCanvas.height);
-      ctxTranslit.drawImage(im, 0, 0, translitCanvas.width, translitCanvas.height);
-      ctxTrans.clearRect(0,0,transCanvas.width, transCanvas.height);
-      ctxTrans.drawImage(im, 0, 0, transCanvas.width, transCanvas.height);
-      status('Image loaded. Ready for OCR.');
-      setProgress(0);
-      lines = []; ocrData = null; translatedLines = []; transliteratedLines = [];
-      wordCount.textContent = 'Words: 0';
-    };
-    im.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+function downloadCanvas(id) {
+    const link = document.createElement("a");
+    link.download = id + ".png";
+    link.href = document.getElementById(id).toDataURL();
+    link.click();
 }
 
-/* ---------- OCR with Tesseract.js ---------- */
-async function runOCR(){
-  if (!img) { alert('Upload an image first'); return; }
-  setProgress(2);
-  status('Loading Tesseract (this may take a moment on first run)...');
+async function startProcessing(e) {
+    const file = e.target.files[0];
+    if(!file) return;
 
-  const worker = Tesseract.createWorker({
-    logger: m => {
-      if (m.status && m.progress != null) {
-        setProgress(Math.round(m.progress * 100));
-        status(`${m.status} ${(m.progress*100).toFixed(0)}%`);
-      }
+    document.getElementById("status").innerText = "Reading image...";
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    await img.decode();
+
+    drawOnCanvas("orig", img);
+
+    document.getElementById("status").innerText = "Extracting Kannada text...";
+    const result = await Tesseract.recognize(img, "kan", {});
+
+    const kannadaText = result.data.text.trim();
+    console.log("OCR:", kannadaText);
+
+    if(!kannadaText){
+        document.getElementById("status").innerText = "No Kannada detected!";
+        return;
     }
-  });
-  try {
-    await worker.load();
-    await worker.loadLanguage(OCR_LANG);
-    await worker.initialize(OCR_LANG);
 
-    // We'll run recognition on the scaled origCanvas dataURL so coordinates match canvas pixels
-    const dataUrl = origCanvas.toDataURL('image/png');
-    const res = await worker.recognize(dataUrl, { tessedit_pageseg_mode: Tesseract.PSM.AUTO });
-    ocrData = res.data || {};
-    await worker.terminate();
-    status('OCR complete');
-    setProgress(100);
-    buildLineSegments();
-  } catch (e) {
-    console.error(e);
-    status('OCR failed: ' + (e.message || e));
-  }
+    document.getElementById("status").innerText = "Transliterating...";
+    const EnglishTranslit = await Aksharamukha.convert("Kannada","Latin", kannadaText);
+
+    // Render transliteration image
+    drawTextCanvas("translit", img, EnglishTranslit);
+
+    document.getElementById("status").innerText = "Translating...";
+    const translated = await translateFree(EnglishTranslit);
+
+    // Render translation image
+    drawTextCanvas("translated", img, translated);
+
+    document.getElementById("status").innerText = "Done ✔";
 }
 
-/* ---------- Build lines & word bboxes from ocrData ---------- */
-function buildLineSegments(){
-  lines = [];
-  if (!ocrData) { status('No OCR data'); return; }
-  const rawLines = ocrData.lines || [];
-  const rawWords = ocrData.words || [];
-  if (rawLines && rawLines.length > 0) {
-    rawLines.forEach((ln, idx) => {
-      const bbox = normalize(ln.bbox || ln.boundingBox || { x0: ln.x0||0, y0: ln.y0||0, x1: ln.x1||(ln.x0||0)+ (ln.w||0), y1: ln.y1||(ln.y0||0) + (ln.h||0) });
-      const wordsInLine = rawWords.filter(w => {
-        // include word if vertical overlap
-        const wb = normalize(w.bbox || { x0:w.x0||0,y0:w.y0||0,x1:(w.x0||0)+(w.width||0),y1:(w.y0||0)+(w.height||0) });
-        return (wb.y < bbox.y + bbox.h && wb.y + wb.h > bbox.y);
-      }).map(w => ({ bbox: normalize(w.bbox || { x0:w.x0||0,y0:w.y0||0,x1:(w.x0||0)+(w.width||0),y1:(w.y0||0)+(w.height||0) }), text: w.text }));
-      lines.push({ id: idx, text: ln.text, bbox, words: wordsInLine });
-    });
-  } else if (rawWords && rawWords.length) {
-    // cluster words by approximate y coordinate into lines
-    const groups = {};
-    rawWords.forEach(w => {
-      const wb = normalize(w.bbox || { x0:w.x0||0,y0:w.y0||0,x1:(w.x0||0)+(w.width||0),y1:(w.y0||0)+(w.height||0) });
-      const key = Math.round(wb.y / 20);
-      if (!groups[key]) groups[key] = [];
-      groups[key].push({ bbox: wb, text: w.text });
-    });
-    let id=0;
-    for (const k in groups){
-      const arr = groups[k];
-      const bbox = arr.reduce((acc,it) => {
-        acc.x = Math.min(acc.x, it.bbox.x);
-        acc.y = Math.min(acc.y, it.bbox.y);
-        acc.r = Math.max(acc.r, it.bbox.x + it.bbox.w);
-        acc.b = Math.max(acc.b, it.bbox.y + it.bbox.h);
-        return acc;
-      }, { x:1e9,y:1e9,r:0,b:0 });
-      const bnorm = { x: bbox.x, y: bbox.y, w: bbox.r - bbox.x, h: bbox.b - bbox.y };
-      lines.push({ id: id++, text: arr.map(a=>a.text).join(' '), bbox: bnorm, words: arr });
+async function translateFree(txt){
+    try{
+        const res = await fetch("https://libretranslate.de/translate", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({q: txt, source:"auto", target:"en"})
+        });
+        const data = await res.json();
+        return data.translatedText;
+    }catch{
+        return "(Translation API error)";
     }
-  }
-  wordCount.textContent = 'Words: ' + (ocrData.words ? ocrData.words.length : 0);
-  // draw bounding boxes for debugging/preview on original
-  drawBoxesOnCanvas();
 }
 
-/* normalize various bbox shapes to x,y,w,h */
-function normalize(b){
-  if (!b) return { x:0,y:0,w:0,h:0 };
-  if (b.x0 !== undefined && b.y0 !== undefined && b.x1 !== undefined && b.y1 !== undefined) {
-    return { x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 };
-  }
-  if (b.x !== undefined && b.y !== undefined && b.w !== undefined && b.h !== undefined) {
-    return { x: b.x, y: b.y, w: b.w, h: b.h };
-  }
-  // fallback
-  return { x:0,y:0,w:0,h:0 };
+function drawOnCanvas(id, img){
+    const c = document.getElementById(id);
+    const ctx = c.getContext("2d");
+    c.width = img.width;
+    c.height = img.height;
+    ctx.drawImage(img, 0, 0);
 }
 
-/* draw boxes on original canvas for user feedback */
-function drawBoxesOnCanvas(){
-  if (!img || !lines.length) return;
-  // redraw original
-  ctxOrig.clearRect(0,0,origCanvas.width, origCanvas.height);
-  ctxOrig.drawImage(img, 0, 0, origCanvas.width, origCanvas.height);
-  ctxTranslit.clearRect(0,0,translitCanvas.width, translitCanvas.height);
-  ctxTranslit.drawImage(img, 0, 0, translitCanvas.width, translitCanvas.height);
-  ctxTrans.clearRect(0,0,transCanvas.width, transCanvas.height);
-  ctxTrans.drawImage(img, 0, 0, transCanvas.width, transCanvas.height);
+function drawTextCanvas(id, img, text){
+    const c = document.getElementById(id);
+    const ctx = c.getContext("2d");
 
-  // Tesseract returned coordinates relative to the image passed (we passed the scaled canvas), so coords match canvas
-  ctxOrig.save();
-  ctxOrig.strokeStyle = 'rgba(255,107,129,0.6)';
-  ctxOrig.lineWidth = 1.6;
-  lines.forEach(l => {
-    ctxOrig.strokeRect(l.bbox.x, l.bbox.y, l.bbox.w, l.bbox.h);
-  });
-  ctxOrig.restore();
+    c.width = img.width;
+    c.height = img.height;
+
+    ctx.drawImage(img, 0, 0);
+
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(0, c.height-120, c.width, 120);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "32px Arial";
+    wrapText(ctx, text, 20, c.height-80, c.width-40, 32);
 }
 
-/* ---------- Transliteration (in-browser approximate) ----------
-   Practical mapping for Kannada base letters and vowel signs.
-   This is an approximate phonetic transliteration for typical printed Kannada.
-   It handles independent vowels, consonants and common vowel signs.
-   Complex conjuncts may be approximated per-character.
-*/
-const KANNADA_MAP = (function(){
-  // base vowels and signs
-  const map = {
-    // independent vowels
-    '\u0C85':'a','\u0C86':'aa','\u0C87':'i','\u0C88':'ii','\u0C89':'u','\u0C8A':'uu','\u0C8B':'r','\u0C8E':'e','\u0C8F':'ee','\u0C90':'ai','\u0C92':'o','\u0C93':'oo','\u0C94':'au',
-    // consonants
-    '\u0C95':'ka','\u0C96':'kha','\u0C97':'ga','\u0C98':'gha','\u0C99':'nga',
-    '\u0C9A':'ca','\u0C9B':'cha','\u0C9C':'ja','\u0C9D':'jha','\u0C9E':'nya',
-    '\u0C9F':'ta','\u0CA0':'tha','\u0CA1':'da','\u0CA2':'dha','\u0CA3':'na',
-    '\u0CA4':'ta','\u0CA5':'tha','\u0CA6':'da','\u0CA7':'dha','\u0CA8':'na',
-    '\u0CAA':'pa','\u0CAB':'pha','\u0CAC':'ba','\u0CAD':'bha','\u0CAE':'ma',
-    '\u0CAF':'ya','\u0CB0':'ra','\u0CB2':'la','\u0CB3':'lla','\u0CB5':'va',
-    '\u0CB6':'sha','\u0CB7':'ssa','\u0CB8':'sa','\u0CB9':'ha',
-    // vowel signs (diacritics) - map modifies preceding consonant
-    '\u0CBE':'aa','\u0CBF':'i','\u0CC0':'ii','\u0CC1':'u','\u0CC2':'uu','\u0CC3':'r','\u0CC6':'e','\u0CC7':'ee','\u0CC8':'ai','\u0CCA':'o','\u0CCB':'oo','\u0CCC':'au',
-    // anusvara and visarga and others
-    '\u0C82':'m','\u0C83':'h'
-  };
-  return map;
-})();
-
-/* transliterate a Kannada string using the mapping above.
-   This is a conservative, character-level algorithm:
-   - If a consonant is followed by a vowel sign, combine them.
-   - If consonant has halant (virama) U+0CCD, drop the inherent 'a'.
-*/
-function transliterateKannada(str){
-  if (!str) return '';
-  const HALANT = '\u0CCD';
-  let out = '';
-  for (let i=0;i<str.length;i++){
-    const ch = str[i];
-    // space/punct
-    if (/\s/.test(ch)) { out += ch; continue; }
-    // vowel signs
-    if (KANNADA_MAP[ch] && isVowelSign(ch)) {
-      // attach to previous base if present
-      if (out && !out.endsWith(' ')) {
-        // remove trailing inherent 'a' if preceding was consonant transliteration ending with 'a'
-        // naive approach: if last 1-2 chars are consonant mapping ending with 'a', replace
-        // simple approach: just append vowel mapping
-        out += KANNADA_MAP[ch];
-      } else {
-        out += KANNADA_MAP[ch];
-      }
-      continue;
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+    const words = text.split(' ');
+    let line = '';
+    for (let n=0;n<words.length;n++){
+        let test = line+words[n]+' ';
+        let width = ctx.measureText(test).width;
+        if(width>maxWidth){ ctx.fillText(line,x,y); line=words[n]+' '; y+=lineHeight; }
+        else line=test;
     }
-    // halant handling
-    if (ch === HALANT) {
-      // remove last inherent 'a' if present (we assume consonant mapping ends with 'a')
-      if (out.endsWith('a')) out = out.slice(0,-1);
-      continue;
-    }
-    // direct map
-    if (KANNADA_MAP[ch]) {
-      out += KANNADA_MAP[ch];
-      continue;
-    }
-    // fallback: if ASCII, keep
-    out += ch;
-  }
-  // cleanup: compress repeated vowels like 'aa' to 'ā' (optional) - keep ASCII for simplicity
-  return out;
+    ctx.fillText(line,x,y);
 }
-function isVowelSign(ch){
-  const v = ['\u0CBE','\u0CBF','\u0CC0','\u0CC1','\u0CC2','\u0CC3','\u0CC6','\u0CC7','\u0CC8','\u0CCA','\u0CCB','\u0CCC'];
-  return v.includes(ch);
-}
-
-/* ---------- Translation using LibreTranslate (or custom) ---------- */
-async function translateText(text){
-  const payload = { q: text, source: 'kn', target: targetLang.value || DEFAULT_TARGET, format: 'text' };
-  const resp = await fetch(TRANSLATE_API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  if (!resp.ok) {
-    throw new Error('Translate API error ' + resp.status);
-  }
-  const j = await resp.json();
-  if (j.translatedText) return j.translatedText;
-  if (j.responseData && j.responseData.translatedText) return j.responseData.translatedText;
-  if (typeof j === 'string') return j;
-  return j.translatedText || JSON.stringify(j);
-}
-
-/* ---------- Render pipeline: take lines[], produce transliteratedLines & translatedLines, then render onto canvases ---------- */
-async function processLinesAndRender(){
-  if (!lines.length) { status('No text lines to process'); return; }
-  // transliterate locally, translate remotely
-  transliteratedLines = lines.map(l => ({ id: l.id, text: l.text, translit: transliterateKannada(l.text), bbox: l.bbox }));
-  translatedLines = lines.map(l => ({ id: l.id, text: l.text, translated: null, bbox: l.bbox }));
-
-  // translate sequentially
-  for (let i=0;i<translatedLines.length;i++){
-    status(`Translating ${i+1}/${translatedLines.length}`);
-    try {
-      const t = await translateText(translatedLines[i].text);
-      translatedLines[i].translated = t;
-    } catch (e) {
-      console.error('Translation failed for line', i, e);
-      translatedLines[i].translated = translatedLines[i].text; // fallback
-    }
-    await sleep(120);
-  }
-  status('Rendering transliteration & translation canvases...');
-  renderReplacementCanvas(ctxTranslit, transliteratedLines, true);
-  renderReplacementCanvas(ctxTrans, translatedLines.map(l => ({ ...l, translated: l.translated })), true);
-  status('Done. You can download the outputs.');
-}
-
-/* ---------- Rendering: erase original text areas and draw English centered in boxes ---------- */
-function renderReplacementCanvas(ctx, setOfLines, centerText=true){
-  if (!img) return;
-  // redraw image
-  ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
-  ctx.drawImage(img, 0, 0, ctx.canvas.width, ctx.canvas.height);
-
-  // choose background fill for erasure: white with high opacity works for scanned documents
-  setOfLines.forEach(item => {
-    const b = item.bbox;
-    const x = b.x, y = b.y, w = b.w, h = b.h;
-    // erase area
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.fillRect(x - 2, y - 2, Math.max(8, w + 4), Math.max(12, h + 6));
-    ctx.restore();
-
-    // draw text in box, center vertically
-    const text = item.translit || item.translated || item.text || '';
-    if (!text) return;
-    // choose font size to fit box height
-    const maxFont = Math.max(12, Math.min(Math.round(h * 0.75), 28));
-    ctx.font = `${maxFont}px Inter, Arial`;
-    ctx.fillStyle = '#111';
-    // wrap to box width
-    const padding = 6;
-    const linesWrapped = wrapText(ctx, (item.translit || item.translated || item.text), Math.max(20, w - padding*2));
-    // compute starting y so center vertically
-    const totalHeight = linesWrapped.length * maxFont * 1.05;
-    let startY = y + Math.max(0, (h - totalHeight)/2);
-    if (startY < y) startY = y + 1;
-    linesWrapped.forEach(ln => {
-      // choose x so it's centered horizontally
-      const txtWidth = ctx.measureText(ln).width;
-      let tx = x + Math.max(0, (w - txtWidth)/2);
-      ctx.fillText(ln, tx, startY);
-      startY += maxFont * 1.05;
-    });
-  });
-}
-
-/* simple text wrapper for canvas */
-function wrapText(ctx, text, maxWidth){
-  if (!text) return [];
-  const words = text.split(' ');
-  const lines = [];
-  let cur = '';
-  for (let i=0;i<words.length;i++){
-    const test = cur ? (cur + ' ' + words[i]) : words[i];
-    if (ctx.measureText(test).width > maxWidth && cur) {
-      lines.push(cur);
-      cur = words[i];
-    } else cur = test;
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
-/* ---------- Main button handlers ---------- */
-startBtn.addEventListener('click', async () => {
-  if (!img) return alert('Please upload an image first');
-  // set endpoint
-  if (endpointSelect.value === 'custom') TRANSLATE_API_URL = customEndpoint.value || TRANSLATE_API_URL;
-  else TRANSLATE_API_URL = endpointSelect.value;
-  setProgress(0);
-  await runOCR();
-  if (!lines.length) { status('No lines detected'); return; }
-  await processLinesAndRender();
-});
-
-resetBtn.addEventListener('click', () => {
-  if (!img) return;
-  ctxOrig.clearRect(0,0,origCanvas.width, origCanvas.height); ctxOrig.drawImage(img,0,0,origCanvas.width,origCanvas.height);
-  ctxTranslit.clearRect(0,0,translitCanvas.width, translitCanvas.height); ctxTranslit.drawImage(img,0,0,translitCanvas.width,translitCanvas.height);
-  ctxTrans.clearRect(0,0,transCanvas.width, transCanvas.height); ctxTrans.drawImage(img,0,0,transCanvas.width,transCanvas.height);
-  ocrData = null; lines = []; transliteratedLines = []; translatedLines = [];
-  setProgress(0); status('Reset to original');
-  wordCount.textContent = 'Words: 0';
-});
-
-/* download handlers */
-downloadTranslit.addEventListener('click', () => {
-  if (!img) return alert('Nothing to download');
-  const link = document.createElement('a');
-  link.href = translitCanvas.toDataURL('image/png');
-  link.download = 'transliteration.png';
-  link.click();
-});
-downloadTrans.addEventListener('click', () => {
-  if (!img) return alert('Nothing to download');
-  const link = document.createElement('a');
-  link.href = transCanvas.toDataURL('image/png');
-  link.download = 'translation.png';
-  link.click();
-});
-
-/* ---------- Initialization / utils ---------- */
-setProgress(0);
-status('Idle');
-
-function dataURLtoFile(dataurl, filename) {
-  const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]);
-  let n = bstr.length, u8arr = new Uint8Array(n);
-  while(n--) u8arr[n] = bstr.charCodeAt(n);
-  return new File([u8arr], filename, {type:mime});
-}
-
-/* ---------- Note: Tesseract returns coords relative to canvas we passed to recognize (we used origCanvas),
-   so we draw on same pixel coordinates. If you use a different input size, adjust scaling accordingly. ---------- */
-
 </script>
+
 </body>
 </html>
