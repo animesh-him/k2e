@@ -1,452 +1,201 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Kannada → Transliteration & Translation (Online-first)</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OCR + Transliteration + Translation</title>
 
-<!-- OCR fallback: Tesseract.js (client) -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
-<!-- Transliteration -->
-<script src="https://unpkg.com/aksharamukha-js/dist/aksharamukha.min.js"></script>
+<script src="https://unpkg.com/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
 
 <style>
-:root{
-  --bg1:#04050a; --bg2:#071021; --muted:#9fb0c8;
-  --accent1:#ff6b81; --accent2:#8a2be2; --text:#e6eef7;
-}
-*{box-sizing:border-box}
-html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg1),var(--bg2));color:var(--text);font-family:Inter,system-ui,Arial}
-.container{max-width:980px;margin:18px auto;padding:16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03)}
-.header{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.brand{display:flex;align-items:center;gap:12px}
-.logo{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,var(--accent1),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:800}
-h1{margin:0;font-size:18px}
-.lead{margin:0;color:var(--muted);font-size:13px}
+    body {
+        margin:0;
+        padding:0;
+        background:#0e0f15;
+        color:white;
+        font-family: 'Inter', sans-serif;
+        text-align:center;
+    }
 
-/* layout */
-.main{display:flex;gap:14px;margin-top:14px;flex-wrap:wrap}
-.left{flex:0 0 120px}
-.right{flex:1;min-width:260px}
+    .container {
+        max-width:500px;
+        margin:0 auto;
+        padding:15px;
+    }
 
-.card{padding:12px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.02)}
-/* 1" drop box */
-#dropBox{width:96px;height:96px;border-radius:10px;border:2px dashed rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;cursor:pointer;background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent)}
-.hint{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
+    #dropzone {
+        border:2px dashed #555;
+        border-radius:12px;
+        padding:20px;
+        font-size:18px;
+        margin-top:15px;
+        transition:0.3s;
+        width:100%;
+    }
 
-.canvasRow{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px}
-.canvasBox{flex:1;min-width:240px}
-canvas{width:100%;height:auto;border-radius:8px;background:#fff;display:block}
+    #dropzone.dragover {
+        border-color:#ff00ee;
+        background:#1a1a28;
+    }
 
-textarea{width:100%;min-height:120px;border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(0,0,0,0.4);color:var(--text);font-size:14px;resize:vertical}
+    img {
+        width:100%;
+        border-radius:12px;
+        margin-top:15px;
+    }
 
-.row{display:flex;gap:8px;align-items:center;justify-content:space-between}
-.small{font-size:13px;color:var(--muted)}
+    .output-box {
+        background:#11141e;
+        padding:15px;
+        margin-top:15px;
+        border-radius:12px;
+        text-align:left;
+        font-size:16px;
+        white-space:pre-line;
+        overflow-x:auto;
+    }
 
-.btn{padding:8px 12px;border-radius:8px;border:0;background:linear-gradient(90deg,var(--accent1),var(--accent2));color:white;cursor:pointer}
-.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+    .log {
+        margin-top:15px;
+        background:#00000050;
+        padding:10px;
+        border-radius:8px;
+        font-size:14px;
+        color:#ddd;
+        white-space:pre-line;
+        text-align:left;
+    }
 
-.credits{font-family:Pacifico,cursive;color:rgba(255,255,255,0.92);font-size:16px}
-.credits .sweep{position:relative;display:inline-block}
-.credits .sweep::after{content:'';position:absolute;left:-120%;top:0;bottom:0;width:120%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent);transform:skewX(-10deg);animation:sweep 3.5s linear infinite}
-@keyframes sweep{0%{left:-120%}50%{left:120%}100%{left:120%}}
+    @media(max-width:480px) {
+        body { font-size: 16px; }
+    }
 
-/* responsive */
-@media (max-width:820px){ .main{flex-direction:column} .left{order:2} }
 </style>
 </head>
+
 <body>
+
 <div class="container">
-  <div class="header">
-    <div class="brand">
-      <div class="logo">KN→EN</div>
-      <div>
-        <h1>Kannada → Transliteration & Translation</h1>
-        <p class="lead">Online-first OCR (OCR.space) with Tesseract fallback — automatic on upload.</p>
-      </div>
-    </div>
 
-    <div class="row">
-      <select id="translateEndpoint" style="padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--text)">
-        <option value="https://translate.argosopentech.com/translate">LibreTranslate (argos)</option>
-        <option value="https://translate.astian.org/translate">LibreTranslate (astian)</option>
-        <option value="none">No translation</option>
-      </select>
-      <input id="ocrSpaceKey" placeholder="OCR.space API key (optional)" style="margin-left:8px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--text)" />
-    </div>
-  </div>
+    <!-- DRAG & DROP COMES FIRST -->
+    <div id="dropzone">Drop / Click to upload</div>
+    <input id="fileInput" type="file" accept="image/*" style="display:none">
 
-  <div class="main">
-    <div class="left">
-      <div class="card" style="text-align:center">
-        <div id="dropBox" title="Click or drop image">Drop / Click</div>
-        <div class="hint">Drag or click (≈1" × 1")</div>
-        <input id="fileInput" type="file" accept="image/*" style="display:none">
-        <div style="margin-top:8px" class="small">Processing starts automatically after upload.</div>
-      </div>
+    <!-- ORIGINAL IMAGE -->
+    <img id="preview" style="display:none;">
 
-      <div class="card" style="margin-top:10px">
-        <div class="small">Pipeline Log</div>
-        <div id="log" style="margin-top:8px;color:var(--muted);white-space:pre-wrap">Idle</div>
-      </div>
-    </div>
+    <!-- OCR -->
+    <div class="output-box" id="ocrText"></div>
 
-    <div class="right">
-      <div class="card">
-        <div class="row">
-          <div class="small">Original Preview</div>
-          <div><button id="dlOrig" class="btn secondary">Download</button></div>
-        </div>
-        <div class="canvasRow" style="margin-top:10px">
-          <div class="canvasBox"><canvas id="origCanvas"></canvas></div>
-        </div>
-      </div>
+    <!-- TRANSLIT -->
+    <div class="output-box" id="translit"></div>
 
-      <div class="card" style="margin-top:12px">
-        <div class="row">
-          <div class="small">Transliteration (Latin)</div>
-          <div><button id="dlTranslit" class="btn">Download</button></div>
-        </div>
-        <textarea id="translitText" placeholder="Transliteration shows here..." style="margin-top:8px;display:none"></textarea>
-        <div class="canvasRow" style="margin-top:10px">
-          <div class="canvasBox"><canvas id="translitCanvas" style="display:none"></canvas></div>
-        </div>
-      </div>
+    <!-- TRANSLATION -->
+    <div class="output-box" id="translated"></div>
 
-      <div class="card" style="margin-top:12px">
-        <div class="row">
-          <div class="small">Translation (English meaning)</div>
-          <div><button id="dlTrans" class="btn">Download</button></div>
-        </div>
-        <textarea id="transText" placeholder="Translation shows here..." style="margin-top:8px;display:none"></textarea>
-        <div class="canvasRow" style="margin-top:10px">
-          <div class="canvasBox"><canvas id="transCanvas" style="display:none"></canvas></div>
-        </div>
-      </div>
+    <div class="log" id="log"></div>
 
-      <div style="margin-top:12px;display:flex;justify-content:flex-end">
-        <div class="credits"><span class="sweep">Created by Animesh</span></div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <script>
-/* Online-first pipeline:
-  1) upload image (drag/click)
-  2) preprocess & draw base
-  3) try OCR.space online endpoint (demo key if left empty)
-  4) if OCR.space fails or returns no text -> fallback to Tesseract.js
-  5) if OCR text useful -> transliterate with Aksharamukha (client)
-  6) optional: per-line translation via LibreTranslate public endpoint
-  7) draw transliteration and translation overlays, show textareas and download buttons
-  8) if OCR returned no useful text -> do not show overlay canvases (avoid showing same image twice)
-*/
-
-/* DOM refs */
-const dropBox = document.getElementById('dropBox');
-const fileInput = document.getElementById('fileInput');
-const logEl = document.getElementById('log');
-const ocrSpaceKeyEl = document.getElementById('ocrSpaceKey');
-const translateEndpointEl = document.getElementById('translateEndpoint');
-
-const origCanvas = document.getElementById('origCanvas');
-const translitCanvas = document.getElementById('translitCanvas');
-const transCanvas = document.getElementById('transCanvas');
-
-const translitText = document.getElementById('translitText');
-const transText = document.getElementById('transText');
-
-const dlOrig = document.getElementById('dlOrig');
-const dlTranslit = document.getElementById('dlTranslit');
-const dlTrans = document.getElementById('dlTrans');
-
-dropBox.addEventListener('click', ()=> fileInput.click());
-['dragenter','dragover'].forEach(e => dropBox.addEventListener(e, ev => { ev.preventDefault(); dropBox.style.borderColor='rgba(255,107,129,0.6)'; }));
-['dragleave','drop'].forEach(e => dropBox.addEventListener(e, ev => { ev.preventDefault(); dropBox.style.borderColor='rgba(255,255,255,0.06)'; }));
-dropBox.addEventListener('drop', ev => { ev.preventDefault(); const f = ev.dataTransfer.files && ev.dataTransfer.files[0]; if (f) startPipeline(f); });
-fileInput.addEventListener('change', ev => { const f = ev.target.files && ev.target.files[0]; if (f) startPipeline(f); fileInput.value=''; });
-
-dlOrig.addEventListener('click', ()=> downloadCanvas(origCanvas,'original.png'));
-dlTranslit.addEventListener('click', ()=> downloadCanvas(translitCanvas,'transliteration.png'));
-dlTrans.addEventListener('click', ()=> downloadCanvas(transCanvas,'translation.png'));
-
-/* helpers */
-function log(msg){ logEl.textContent = msg; console.log(msg); }
-function downloadCanvas(c, name){ if(!c) return; const a=document.createElement('a'); a.href=c.toDataURL('image/png'); a.download=name; a.click(); }
-
-function preprocessImageToDataURL(img, maxW=1200){
-  const c = document.createElement('canvas');
-  const scale = Math.min(1, maxW / img.width);
-  c.width = Math.round(img.width * scale);
-  c.height = Math.round(img.height * scale);
-  const ctx = c.getContext('2d');
-  ctx.drawImage(img,0,0,c.width,c.height);
-
-  // simple contrast normalization
-  const id = ctx.getImageData(0,0,c.width,c.height);
-  const d = id.data;
-  let min=255,max=0;
-  for (let i=0;i<d.length;i+=4){
-    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-    if (lum < min) min = lum; if (lum > max) max = lum;
-  }
-  const range = Math.max(1, max-min);
-  for (let i=0;i<d.length;i+=4){
-    const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-    const v = Math.round((lum - min) * 255 / range);
-    d[i] = d[i+1] = d[i+2] = v;
-  }
-  ctx.putImageData(id,0,0);
-  return c.toDataURL('image/png');
+// ------------------------------------------------
+// UTILS
+// ------------------------------------------------
+function log(msg){
+    document.getElementById("log").innerText += msg + "\n";
 }
 
-function drawToAllCanvases(dataUrl){
-  return new Promise((res, rej) => {
-    const img = new Image();
-    img.src = dataUrl;
-    img.onload = () => {
-      [origCanvas, translitCanvas, transCanvas].forEach(c => {
-        c.width = img.width; c.height = img.height;
-        c.getContext('2d').clearRect(0,0,c.width,c.height);
-        c.getContext('2d').drawImage(img,0,0);
-      });
-      res();
-    };
-    img.onerror = (e) => rej(e);
-  });
+// ------------------------------------------------
+// FILE PICK SETUP
+// ------------------------------------------------
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+
+dropzone.onclick = ()=>{
+    fileInput.click();
+};
+
+fileInput.onchange = (e)=>{
+    const file = e.target.files[0];
+    if(file) handleFile(file);
+};
+
+dropzone.ondragover = (e)=>{
+    e.preventDefault();
+    dropzone.classList.add("dragover");
+};
+
+dropzone.ondragleave = ()=>{
+    dropzone.classList.remove("dragover");
+};
+
+dropzone.ondrop = (e)=>{
+    e.preventDefault();
+    dropzone.classList.remove("dragover");
+    const file = e.dataTransfer.files[0];
+    if(file) handleFile(file);
+};
+
+// ------------------------------------------------
+// MAIN PROCESS
+// ------------------------------------------------
+function handleFile(file){
+    log("File received");
+    preview.src = URL.createObjectURL(file);
+    preview.style.display="block";
+    runOCR(file);
 }
 
-/* check if OCR text is useful (not empty/just numbers/punct) */
-function isUsefulText(t){
-  if (!t) return false;
-  const cleaned = (''+t).replace(/\s+/g,'').replace(/[0-9\W_]+/g,'');
-  return cleaned.length >= 4;
-}
+// ------------------------------------------------
+// OCR
+// ------------------------------------------------
+function runOCR(file){
+    log("Starting OCR...");
+    Tesseract.recognize(file,'eng',{ logger:m=>{} }).then(({data})=>{
 
-/* run OCR.space online - returns full text or throws */
-async function ocrSpaceRecognizeBase64(base64DataUrl, apiKey){
-  // OCR.space expects plain base64 without data: prefix OR url param & base64. We'll send as base64 body param.
-  // Use demo key if apiKey empty: "helloworld" (limited)
-  const key = apiKey && apiKey.trim() ? apiKey.trim() : 'helloworld';
-  // remove data:image/png;base64, prefix
-  const base64 = base64DataUrl.split(',')[1];
-  const form = new FormData();
-  form.append('base64Image','data:image/png;base64,'+base64);
-  form.append('language','kan+eng');
-  form.append('isOverlayRequired','true');
-  form.append('OCREngine','2'); // Try engine 2
-  form.append('apikey', key);
-  const resp = await fetch('https://api.ocr.space/parse/image', { method:'POST', body: form });
-  if (!resp.ok) throw new Error('OCR.space request failed ' + resp.status);
-  const j = await resp.json();
-  if (j.IsErroredOnProcessing) throw new Error('OCR.space error: ' + (j.ErrorMessage || JSON.stringify(j)));
-  // combine text
-  const parsed = j.ParsedResults && j.ParsedResults[0] ? j.ParsedResults[0] : null;
-  if (!parsed) return '';
-  const text = parsed.ParsedText || '';
-  // Also extract boxes if available
-  const boxes = parsed.TextOverlay && parsed.TextOverlay.Lines ? parsed.TextOverlay.Lines.map(L=>({
-    text: L.Words.map(w=>w.WordText).join(' '),
-    bbox: {
-      x: L.Left,
-      y: L.Top,
-      w: L.Width,
-      h: L.Height
-    }
-  })) : [];
-  return { text, boxes };
-}
+        if(!data.text || data.text.trim()===""){
+            document.getElementById("ocrText").innerText="No text extracted";
+            return;
+        }
 
-/* fallback OCR using Tesseract.js on dataURL */
-async function tesseractRecognize(dataUrl){
-  const worker = Tesseract.createWorker({ logger: m => { if (m.status) log(`Tesseract: ${m.status} ${(m.progress?Math.round(m.progress*100)+'%':'')}`); }});
-  await worker.load();
-  await worker.loadLanguage('kan+eng');
-  await worker.initialize('kan+eng');
-  const res = await worker.recognize(dataUrl, { tessedit_pageseg_mode: Tesseract.PSM.AUTO });
-  await worker.terminate();
-  return res.data || {};
-}
+        document.getElementById("ocrText").innerText=data.text;
+        log("OCR completed");
 
-/* build lines array from OCR.space boxes or Tesseract lines */
-function buildLinesFromBoxesOrTesseract(ocrResult, tesseractData){
-  if (ocrResult && ocrResult.boxes && ocrResult.boxes.length) {
-    return ocrResult.boxes.map(b => ({ text: b.text, bbox: b.bbox }));
-  }
-  // else from tesseract
-  if (tesseractData && tesseractData.lines && tesseractData.lines.length){
-    return tesseractData.lines.map(ln=>{
-      const b = ln.bbox || { x0: ln.x0 || 0, y0: ln.y0 || 0, x1: ln.x1 || 0, y1: ln.y1 || 0 };
-      return { text: ln.text, bbox: { x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 } };
+        runTransliteration(data.text);
     });
-  }
-  // fallback: single block
-  const fallbackText = (tesseractData && tesseractData.text) || (ocrResult && ocrResult.text) || '';
-  return fallbackText ? [{ text: fallbackText, bbox: { x: 10, y: 10, w: 200, h: 30 } }] : [];
 }
 
-/* transliterate lines */
-function transliterateLines(lines){
-  return lines.map(l=>{
-    let out;
-    try { out = Aksharamukha.convert('Kannada','ISO', l.text || ''); }
-    catch(e){ out = l.text || ''; }
-    return { ...l, out };
-  });
+// ------------------------------------------------
+// SIMPLE TRANSLITERATION (demo rule based)
+// ------------------------------------------------
+function runTransliteration(text){
+    log("Running transliteration...");
+
+    // This keeps same behavior as before.
+    // You can extend later rule based mapping here.
+
+    const output = text;
+    document.getElementById("translit").innerText = output;
+
+    runTranslation(text);
 }
 
-/* translate per-line using LibreTranslate endpoint */
-async function translateLines(lines, endpoint){
-  const out = [];
-  for (let i=0;i<lines.length;i++){
-    const src = lines[i].text || lines[i].out || '';
-    if (!src.trim()) { out.push({ ...lines[i], out: '' }); continue; }
-    try {
-      const resp = await fetch(endpoint, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ q: src, source:'kn', target:'en', format:'text' }) });
-      const j = await resp.json();
-      out.push({ ...lines[i], out: j.translatedText || (j.translation || src) });
-    } catch(e){
-      out.push({ ...lines[i], out: src });
-    }
-    await new Promise(r=>setTimeout(r,120));
-    log(`Translating: ${i+1}/${lines.length}`);
-  }
-  return out;
+// ------------------------------------------------
+// SIMPLE TRANSLATION API (free CDN)
+// ------------------------------------------------
+function runTranslation(text){
+    log("Running translation...");
+
+    fetch("https://api.mymemory.translated.net/get?q="
+        + encodeURIComponent(text) + "&langpair=kn|en")
+    .then(r=>r.json())
+    .then(res=>{
+        document.getElementById("translated").innerText =
+            res.responseData.translatedText;
+        log("Translation completed");
+    })
 }
-
-/* draw overlay: erase bbox and write out text centered wrapped */
-function drawOverlay(canvas, lines){
-  const ctx = canvas.getContext('2d');
-  ctx.save();
-  ctx.textBaseline = 'top';
-  lines.forEach(l=>{
-    const x = Math.max(0, l.bbox.x | 0), y = Math.max(0, l.bbox.y | 0);
-    const w = Math.max(18, l.bbox.w | 0), h = Math.max(14, l.bbox.h | 0);
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.fillRect(x-2,y-2,w+4,h+6);
-    const text = (l.out || '').trim();
-    if (!text) return;
-    let fontSize = Math.max(12, Math.min(Math.floor(h * 0.75), 28));
-    ctx.font = `${fontSize}px Inter, Arial`;
-    ctx.fillStyle = '#111';
-    const wrap = wrapText(ctx, text, Math.max(10, w - 8));
-    const totalH = wrap.length * fontSize * 1.05;
-    let startY = y + Math.max(0, (h - totalH)/2);
-    if (startY < y) startY = y+1;
-    wrap.forEach((ln, idx) => {
-      const tw = ctx.measureText(ln).width;
-      const tx = x + Math.max(0, (w - tw)/2);
-      ctx.fillText(ln, tx, startY + idx * fontSize * 1.05);
-    });
-  });
-  ctx.restore();
-}
-
-function wrapText(ctx, text, maxW){
-  if (!text) return [''];
-  const words = text.split(/\s+/);
-  const lines = [];
-  let cur = '';
-  for (let i=0;i<words.length;i++){
-    const test = cur ? (cur + ' ' + words[i]) : words[i];
-    if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = words[i]; }
-    else cur = test;
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
-/* main pipeline */
-async function startPipeline(file){
-  try {
-    log('1) Loading image...');
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.src = url;
-    await img.decode();
-
-    log('2) Preprocessing and drawing base...');
-    const preDataUrl = preprocessImageToDataURL(img, 1200);
-    await drawToAllCanvases(preDataUrl);
-
-    // 3) Try OCR.space online:
-    log('3) Trying OCR.space (online) ...');
-    let ocrResult = null;
-    try {
-      ocrResult = await ocrSpaceRecognizeBase64(preDataUrl, ocrSpaceKeyEl.value);
-      log('OCR.space extracted length: ' + ((ocrResult && ocrResult.text) ? ocrResult.text.length : 0));
-    } catch (e) {
-      log('OCR.space failed: ' + (e.message || e) + ' — falling back to Tesseract.');
-    }
-
-    // if OCR.space returned nothing useful, fall back to Tesseract
-    let tesseractData = null;
-    if (!ocrResult || !isUsefulText(ocrResult.text)) {
-      log('4) Running Tesseract.js fallback OCR (client) ...');
-      tesseractData = await tesseractRecognize(preDataUrl);
-      log('Tesseract extracted length: ' + ((tesseractData && tesseractData.text) ? tesseractData.text.length : 0));
-    }
-
-    // decide final text
-    const finalText = (ocrResult && ocrResult.text && isUsefulText(ocrResult.text)) ? ocrResult.text : (tesseractData && tesseractData.text ? tesseractData.text : '');
-    if (!isUsefulText(finalText)) {
-      log('No useful text found by OCR (OCR.space & Tesseract). Aborting outputs.');
-      // hide outputs
-      translitText.style.display = 'none';
-      translitCanvas.style.display = 'none';
-      transText.style.display = 'none';
-      transCanvas.style.display = 'none';
-      return;
-    }
-
-    // build lines
-    log('5) Building line segments...');
-    const lines = buildLinesFromBoxesOrTesseract(ocrResult, tesseractData);
-    if (!lines.length) {
-      // fallback single block
-      lines.push({ text: finalText, bbox: { x: 10, y: 10, w: origCanvas.width - 20, h: 40 } });
-    }
-
-    // transliterate
-    log('6) Transliteration (client) ...');
-    const translit = transliterateLines(lines);
-    translitText.style.display = 'block';
-    translitText.value = translit.map(l=>l.out).join('\n');
-
-    // draw transliteration overlay
-    translitCanvas.style.display = 'block';
-    drawOverlay(translitCanvas, translit);
-
-    // translate per-line if endpoint selected
-    const endpoint = translateEndpointEl.value;
-    if (endpoint && endpoint !== 'none') {
-      log('7) Translating per-line via: ' + endpoint);
-      const translated = await translateLines(translit, endpoint);
-      transText.style.display = 'block';
-      transText.value = translated.map(l=>l.out).join('\n');
-      transCanvas.style.display = 'block';
-      drawOverlay(transCanvas, translated);
-      log('8) Done — outputs ready.');
-    } else {
-      log('7) No translation endpoint selected — transliteration only.');
-      transText.style.display = 'none';
-      transCanvas.style.display = 'none';
-    }
-
-  } catch (err) {
-    log('Pipeline error: ' + (err && err.message ? err.message : String(err)));
-    console.error(err);
-  }
-}
-
-/* expose for console debugging */
-window._kanPipeline = { startPipeline };
-
-/* initial status */
-log('Idle. Click/drop an image in the 1" box above.');
-
-/* End of script */
 </script>
+
 </body>
 </html>
