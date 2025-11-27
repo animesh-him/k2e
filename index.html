@@ -1,36 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Kannada Image to Text + Transliterate + Translate</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body {
-      font-family: Arial;
-      margin: 10px;
-      max-width: 600px;
-    }
-    textarea {
-      width: 100%;
-      height: 120px;
-      font-size: 16px;
-      margin-top: 10px;
-    }
-    button {
-      padding: 10px;
-      width: 100%;
-      margin-top: 10px;
-    }
-    .credits{
-      font-family: cursive;
-      text-align:center;
-      margin-top:25px;
-      opacity:0.7;
-    }
-  </style>
+<title>Kannada OCR + Transliterate + Translate</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial;margin:10px;max-width:600px}
+textarea{width:100%;height:120px;font-size:16px;margin-top:10px}
+button{padding:10px;width:100%;margin-top:10px}
+.credits{font-family:cursive;text-align:center;margin-top:25px;opacity:.7}
+</style>
 </head>
 <body>
 
-<h2>Kannada Image OCR + Transliteration + Translation</h2>
+<h2>Kannada OCR + Transliteration + Translation</h2>
 
 <input type="file" id="imgInput" accept="image/*">
 <button onclick="process()">Convert</button>
@@ -38,67 +20,67 @@
 <div id="progress"></div>
 
 <h3>OCR Result</h3>
-<textarea id="ocrText"></textarea>
-<button onclick="download('ocrText','ocr.txt')">Download OCR</button>
+<textarea id="ocr"></textarea>
+<button onclick="download('ocr','ocr.txt')">Download OCR</button>
 
-<h3>Transliteration (Latin Script)</h3>
-<textarea id="latinText"></textarea>
-<button onclick="download('latinText','transliteration.txt')">Download Transliteration</button>
+<h3>Transliteration</h3>
+<textarea id="lat"></textarea>
+<button onclick="download('lat','transliteration.txt')">Download Transliteration</button>
 
 <h3>English Translation</h3>
-<textarea id="englishText"></textarea>
-<button onclick="download('englishText','english.txt')">Download Translation</button>
+<textarea id="eng"></textarea>
+<button onclick="download('eng','english.txt')">Download Translation</button>
 
-<div class="credits">
-  Created by Animesh
-</div>
+<div class="credits">Created by Animesh</div>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/google-translate-api-browser/dist/index.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/kannada-transliteration"></script>
+
+<!-- FIXED WORKING TRANSLITERATOR -->
+<script src="https://cdn.jsdelivr.net/npm/kannadajs"></script>
+
+<!-- FIXED TRANSLATION LIBRARY -->
+<script src="https://cdn.jsdelivr.net/npm/@vitalets/google-translate-api/dist/browser.min.js"></script>
 
 <script>
-async function process() {
-  const file = document.getElementById("imgInput").files[0];
-  if (!file) {
-    alert("Choose an image first");
-    return;
-  }
+async function process(){
+  const file=document.getElementById("imgInput").files[0];
+  if(!file){alert("Select an image first");return;}
 
-  document.getElementById("progress").innerText = "Processing...";
+  document.getElementById("progress").innerText="Processing...";
 
-  const reader = new FileReader();
+  const reader=new FileReader();
   reader.readAsDataURL(file);
 
-  reader.onload = async () => {
-    const worker = await Tesseract.createWorker("kan+eng");
-    const { data } = await worker.recognize(reader.result);
-
-    const ocr = data.text.trim();
-    document.getElementById("ocrText").value = ocr;
-
+  reader.onload=async()=>{
+    const worker=await Tesseract.createWorker("kan+eng");
+    const {data}=await worker.recognize(reader.result);
+    const text=data.text.trim();
+    document.getElementById("ocr").value=text;
     await worker.terminate();
-    document.getElementById("progress").innerText = "Done!";
+    document.getElementById("progress").innerText="Done!";
 
-    // transliterate
-    const latin = window.KannadaTransliteration.transliterate(ocr);
-    document.getElementById("latinText").value = latin;
+    try{
+      const latin=kannada.transliterate(text);
+      document.getElementById("lat").value=latin;
+    }catch(e){
+      document.getElementById("lat").value="Transliteration failed";
+    }
 
-    // translate
-    const translated = await window.translate(ocr, { to: "en" });
-    document.getElementById("englishText").value = translated.text;
+    try{
+      const r=await window.translate(text,{to:"en"});
+      document.getElementById("eng").value=r.text;
+    }catch(e){
+      document.getElementById("eng").value="Translation failed";
+    }
   };
 }
 
-function download(id, filename){
-  const text = document.getElementById(id).value;
-  const blob = new Blob([text], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
+function download(id,name){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([
+   document.getElementById(id).value
+  ]));
+  a.download=name;a.click();
 }
 </script>
 
