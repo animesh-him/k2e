@@ -2,112 +2,64 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>OCR + Transliteration + Translation</title>
+<title>OCR + Translation</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
-body { 
-    font-family: Arial; 
-    background:#0d0d0d; 
-    color:white; 
-    padding:18px;
-}
-h2 { margin-top:25px; }
-.box {
-    border:1px solid #555;
-    padding:10px;
-    background:#121212;
-    white-space: pre-wrap;
-    min-height: 80px;
-    font-size:15px;
-}
-button {
-    width:100%;
-    margin-top:10px;
-    padding:10px;
-    background:linear-gradient(90deg, yellow, pink, violet);
-    border:none;
-    font-size:16px;
-    font-weight:bold;
-}
-input {
-    width:100%;
-    padding:12px;
-}
-#loader {
-    display:none;
-    color:orange;
-    margin-top:10px;
-    font-weight:bold;
-}
+body { font-family: Arial; padding:20px; }
+.box { border:1px solid #888; padding:10px; white-space:pre-wrap; }
+#loader { display:none; color:red; }
 </style>
 </head>
 
 <body>
 
-<h1>Mixed OCR → Transliteration → English Translation</h1>
+<h2>Image OCR + Kannada → English Translation</h2>
 
-<input type="file" id="fileInput" accept="image/*" />
+<input type="file" id="fileInput" accept="image/*">
+<div id="loader">Processing…</div>
 
-<div id="loader">Processing… please wait…</div>
-
-<h2>OCR Output</h2>
+<h3>OCR Output:</h3>
 <div id="ocrOutput" class="box"></div>
 
-<h2>Transliteration (Kannada → Latin)</h2>
-<div id="transOutput" class="box"></div>
-
-<h2>Translation (Kannada → English)</h2>
+<h3>Translation Output:</h3>
 <div id="translateOutput" class="box"></div>
-
 
 <script>
 document.getElementById("fileInput").addEventListener("change", async function(){
     const file = this.files[0];
     if(!file) return;
 
+    const imgURL = URL.createObjectURL(file);
     document.getElementById("loader").style.display="block";
 
-    const imgURL = URL.createObjectURL(file);
-
     try {
-        const result = await Tesseract.recognize(imgURL, 'eng+kan', {
-            logger:m=>console.log(m)
-        });
-
-        // best cleanup
-        let text = result.data.text
-                    .replace(/[^\S\r\n]+/g," ")
-                    .replace(/\n{3,}/g,"\n\n")
-                    .trim();
-
+        const result = await Tesseract.recognize(imgURL, 'eng+kan');
+        const text = result.data.text.trim();
         document.getElementById("ocrOutput").textContent = text;
 
-        if(text){
-            const kannadaOnly = text.match(/[\u0C80-\u0CFF\s.,;:!?()0-9-]+/g)?.join("\n") ?? "";
+        const kannada = text.match(/[\u0C80-\u0CFF\s.,;:!?()]+/g)?.join("\n") ?? "";
 
-            if(kannadaOnly.trim().length){
-                await transliterate(kannadaOnly);
-                await translate(kannadaOnly);
-            } else {
-                document.getElementById("transOutput").textContent = "No Kannada detected.";
-                document.getElementById("translateOutput").textContent = "No Kannada detected.";
-            }
+        if(!kannada.trim()){
+            document.getElementById("translateOutput").textContent =
+              "No Kannada detected to translate";
+        } else {
+            await translate(kannada);
         }
 
-    } catch(err){
-        document.getElementById("ocrOutput").textContent = "OCR failed: "+err.message;
+    } catch(e){
+        document.getElementById("ocrOutput").textContent = "OCR Failed: "+e.message;
     }
 
     document.getElementById("loader").style.display="none";
 });
 
-async function transliterate(text){
+async function translate(text){
     try {
-        const res = await fetch("https://api.libretranslate.com/transliterate",{
+        const r = await fetch("https://libretranslate.de/translate", {
             method:"POST",
             headers:{ "Content-Type":"application/json" },
             body:JSON.stringify({
@@ -116,36 +68,16 @@ async function transliterate(text){
                 target:"en"
             })
         });
-        const data = await res.json();
-        document.getElementById("transOutput").textContent =
-          data.transliteration ?? "Transliteration failed";
-    } catch{
-        document.getElementById("transOutput").textContent = "Transliteration failed";
-    }
-}
 
-async function translate(text){
-    try {
-        const res = await fetch("https://api.libretranslate.com/translate",{
-            method:"POST",
-            headers:{ "Content-Type":"application/json" },
-            body:JSON.stringify({
-                q:text,
-                source:"kn",
-                target:"en",
-                format:"text"
-            })
-        });
-
-        const data = await res.json();
+        const data = await r.json();
         document.getElementById("translateOutput").textContent =
-           data.translatedText ?? "Translation failed";
+            data.translatedText ?? "Translation failed";
 
-    } catch{
-        document.getElementById("translateOutput").textContent = "Translation failed";
+    } catch(err){
+        document.getElementById("translateOutput").textContent =
+            "Translation failed (API blocked or busy)";
     }
 }
 </script>
-
 </body>
 </html>
