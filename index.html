@@ -2,95 +2,112 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>OCR - Transliteration - Translation</title>
+<title>OCR + Transliteration + Translation</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
-body { font-family: Arial; padding:20px; }
-h2 { margin-top:30px; }
+body { 
+    font-family: Arial; 
+    background:#0d0d0d; 
+    color:white; 
+    padding:18px;
+}
+h2 { margin-top:25px; }
 .box {
-    border:1px solid #ccc;
+    border:1px solid #555;
     padding:10px;
-    min-height:70px;
+    background:#121212;
     white-space: pre-wrap;
-    background:#fafafa;
+    min-height: 80px;
+    font-size:15px;
 }
 button {
-    padding:10px 20px;
-    font-size:16px;
+    width:100%;
     margin-top:10px;
+    padding:10px;
+    background:linear-gradient(90deg, yellow, pink, violet);
+    border:none;
+    font-size:16px;
+    font-weight:bold;
+}
+input {
+    width:100%;
+    padding:12px;
 }
 #loader {
     display:none;
+    color:orange;
     margin-top:10px;
     font-weight:bold;
-    color:darkred;
 }
 </style>
 </head>
 
 <body>
 
-<h1>Image OCR + Transliteration + Translation</h1>
+<h1>Mixed OCR → Transliteration → English Translation</h1>
 
-<input type="file" id="fileInput" accept="image/*">
+<input type="file" id="fileInput" accept="image/*" />
 
-<div id="loader">Processing… Please wait…</div>
+<div id="loader">Processing… please wait…</div>
 
-<h2>OCR Output (from image)</h2>
+<h2>OCR Output</h2>
 <div id="ocrOutput" class="box"></div>
 
-<h2>Transliteration Output</h2>
+<h2>Transliteration (Kannada → Latin)</h2>
 <div id="transOutput" class="box"></div>
 
-<h2>Translation Output</h2>
+<h2>Translation (Kannada → English)</h2>
 <div id="translateOutput" class="box"></div>
 
 
 <script>
-// ----------------------
-// WORKING OCR LOGIC
-// ----------------------
-document.getElementById("fileInput").addEventListener("change", async function() {
+document.getElementById("fileInput").addEventListener("change", async function(){
     const file = this.files[0];
-    if (!file) return;
+    if(!file) return;
 
     document.getElementById("loader").style.display="block";
-    document.getElementById("ocrOutput").textContent="";
-    document.getElementById("transOutput").textContent="";
-    document.getElementById("translateOutput").textContent="";
 
     const imgURL = URL.createObjectURL(file);
 
     try {
-        const result = await Tesseract.recognize(imgURL, 'kan', {
-            logger: m => console.log(m)
+        const result = await Tesseract.recognize(imgURL, 'eng+kan', {
+            logger:m=>console.log(m)
         });
 
-        const text = result.data.text.trim();
+        // best cleanup
+        let text = result.data.text
+                    .replace(/[^\S\r\n]+/g," ")
+                    .replace(/\n{3,}/g,"\n\n")
+                    .trim();
+
         document.getElementById("ocrOutput").textContent = text;
 
-        if (text.length > 0) {
-            await processTranslit(text);
-            await processTranslate(text);
+        if(text){
+            const kannadaOnly = text.match(/[\u0C80-\u0CFF\s.,;:!?()0-9-]+/g)?.join("\n") ?? "";
+
+            if(kannadaOnly.trim().length){
+                await transliterate(kannadaOnly);
+                await translate(kannadaOnly);
+            } else {
+                document.getElementById("transOutput").textContent = "No Kannada detected.";
+                document.getElementById("translateOutput").textContent = "No Kannada detected.";
+            }
         }
 
-    } catch(e) {
-        document.getElementById("ocrOutput").textContent = "OCR FAILED: "+e.message;
+    } catch(err){
+        document.getElementById("ocrOutput").textContent = "OCR failed: "+err.message;
     }
 
     document.getElementById("loader").style.display="none";
 });
 
-
-// ------------------------------------------------
-// FIXED WORKING TRANSLITERATION
-// ------------------------------------------------
-async function processTranslit(text){
+async function transliterate(text){
     try {
-        const response = await fetch("https://api.libretranslate.com/transliterate", {
+        const res = await fetch("https://api.libretranslate.com/transliterate",{
             method:"POST",
             headers:{ "Content-Type":"application/json" },
             body:JSON.stringify({
@@ -99,26 +116,17 @@ async function processTranslit(text){
                 target:"en"
             })
         });
-
-        const data = await response.json();
-
-        if (data.transliteration)
-            document.getElementById("transOutput").textContent = data.transliteration;
-        else
-            document.getElementById("transOutput").textContent = "Transliteration failed";
-
-    } catch(e) {
+        const data = await res.json();
+        document.getElementById("transOutput").textContent =
+          data.transliteration ?? "Transliteration failed";
+    } catch{
         document.getElementById("transOutput").textContent = "Transliteration failed";
     }
 }
 
-
-// ------------------------------------------------
-// FIXED WORKING TRANSLATION
-// ------------------------------------------------
-async function processTranslate(text){
+async function translate(text){
     try {
-        const response = await fetch("https://api.libretranslate.com/translate", {
+        const res = await fetch("https://api.libretranslate.com/translate",{
             method:"POST",
             headers:{ "Content-Type":"application/json" },
             body:JSON.stringify({
@@ -129,14 +137,11 @@ async function processTranslate(text){
             })
         });
 
-        const data = await response.json();
+        const data = await res.json();
+        document.getElementById("translateOutput").textContent =
+           data.translatedText ?? "Translation failed";
 
-        if (data.translatedText)
-            document.getElementById("translateOutput").textContent = data.translatedText;
-        else
-            document.getElementById("translateOutput").textContent = "Translation failed";
-
-    } catch(e) {
+    } catch{
         document.getElementById("translateOutput").textContent = "Translation failed";
     }
 }
