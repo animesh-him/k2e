@@ -1,110 +1,131 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8" />
 <title>Kannada OCR + Transliteration + Translation</title>
-
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.3/dist/tesseract.min.js"></script>
-
 <style>
-body { font-family: sans-serif; padding: 15px; background:#111; color:white; }
-h2 { margin-top:25px; }
-textarea { width:100%; height:150px; font-size:18px; padding:10px; }
-button {
-  width:100%; padding:12px; margin-top:10px;
-  font-size:18px; border-radius:10px;
-  background:linear-gradient(45deg,#ff3399,#7f66ff);
-  color:white; border:none;
-}
-.credit{margin-top:40px;text-align:center;font-family:cursive;opacity:0.75;}
+    body {
+        background:#111;
+        color:white;
+        font-family:Arial;
+        padding:15px;
+    }
+    textarea {
+        width:100%;
+        height:140px;
+        font-size:18px;
+        padding:10px;
+        background:#000;
+        color:white;
+    }
+    .box {
+        border:2px dashed #6a6;
+        padding:20px;
+        text-align:center;
+        margin-bottom:20px;
+        cursor:pointer;
+    }
+    button {
+        background:linear-gradient(90deg,#ff2,#f0f,#90f);
+        border:none;
+        padding:15px;
+        width:100%;
+        color:black;
+        font-weight:bold;
+        font-size:18px;
+        margin:15px 0;
+    }
 </style>
 </head>
 <body>
 
 <h2>Upload Image</h2>
-<input type="file" id="fileInput" accept="image/*">
-<div id="status"></div>
+<div class="box" id="dropArea">Drop a picture or click here</div>
+<input type="file" id="fileInput" hidden />
 
-<h2>OCR Result (Kannada)</h2>
-<textarea id="ocr"></textarea>
-<button onclick="download('ocr')">Download OCR</button>
+<h2>OCR Output</h2>
+<textarea id="ocrText">Waiting for image...</textarea>
 
-<h2>Transliteration</h2>
-<textarea id="latin"></textarea>
-<button onclick="download('latin')">Download Transliteration</button>
+<button onclick="download('ocrText','ocr.txt')">Download OCR</button>
+
+<h2>Transliteration (Kannada → Latin)</h2>
+<textarea id="latinText"></textarea>
+<button onclick="download('latinText','latin.txt')">Download Transliteration</button>
 
 <h2>English Translation</h2>
-<textarea id="eng"></textarea>
-<button onclick="download('eng')">Download Translation</button>
+<textarea id="englishText"></textarea>
+<button onclick="download('englishText','translation.txt')">Download Translation</button>
 
-<div class="credit">Created by Animesh</div>
+
+<!-- Tesseract -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<!-- Transliteration Library -->
+<script src="https://cdn.jsdelivr.net/npm/sanscript@1.0.1/sanscript.min.js"></script>
 
 <script>
-document.getElementById("fileInput").addEventListener("change", async function () {
-    const file = this.files[0];
-    if (!file) return;
+let drop = document.getElementById("dropArea");
+let fileInput = document.getElementById("fileInput");
 
-    document.getElementById("status").innerText = "Running OCR…";
+drop.onclick = ()=> fileInput.click();
 
-    try {
-        const result = await Tesseract.recognize(file, 'kan+eng');
-        const text = result.data.text.trim();
-        document.getElementById("ocr").value = text;
-        document.getElementById("status").innerText = "OCR Done!";
-
-        transliterate(text);
-        translate(text);
-
-    } catch (e) {
-        document.getElementById("status").innerText = "OCR Failed";
-        console.log(e);
-    }
+drop.addEventListener("dragover",(e)=>{e.preventDefault();});
+drop.addEventListener("drop",(e)=>{
+    e.preventDefault();
+    process(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change",(e)=>{
+    process(e.target.files[0]);
 });
 
-async function transliterate(text){
-    document.getElementById("latin").value="Working…";
-    try{
-        const r=await fetch("https://api.libretranslate.com/transliterate",{
-            method:"POST",
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-                q:text,
-                source:"kn",
-                target:"en"
-            })
-        });
-        const json=await r.json();
-        document.getElementById("latin").value=json.transliteratedText || "Transliteration failed.";
-    }catch(e){
-        document.getElementById("latin").value="Transliteration failed.";
+
+async function process(file){
+    document.getElementById("ocrText").value = "Processing OCR...";
+    document.getElementById("latinText").value = "";
+    document.getElementById("englishText").value = "";
+
+    const worker = await Tesseract.createWorker();
+    await worker.loadLanguage('kan+eng');
+    await worker.initialize('kan+eng');
+
+    const { data:{ text } } = await worker.recognize(file);
+    await worker.terminate();
+
+    document.getElementById("ocrText").value = text;
+
+    transliterate(text);
+    translate(text);
+}
+
+function transliterate(text){
+    try {
+        const out = Sanscript.t(text,"kannada","iast");
+        document.getElementById("latinText").value = out;
+    } catch(e){
+        document.getElementById("latinText").value = "Transliteration failed.";
     }
 }
 
-async function translate(text){
-    document.getElementById("eng").value="Working…";
-    try{
-        const r=await fetch("https://api.libretranslate.com/translate",{
-            method:"POST",
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-                q:text,
-                source:"kn",
-                target:"en"
-            })
-        });
-        const json=await r.json();
-        document.getElementById("eng").value=json.translatedText || "Translation failed.";
-    }catch(e){
-        document.getElementById("eng").value="Translation failed.";
+async function translate(txt){
+    try {
+        const url =
+        "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q="+
+        encodeURIComponent(txt);
+
+        const res = await fetch(url);
+        const data = await res.json();
+        document.getElementById("englishText").value = data[0].map(x=>x[0]).join("");
+    } catch(e){
+        document.getElementById("englishText").value = "Translation failed.";
     }
 }
 
-function download(id){
-  const text=document.getElementById(id).value;
-  const a=document.createElement("a");
-  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(text);
-  a.download=id+".txt";
-  a.click();
+function download(id, name){
+    const el = document.getElementById(id).value;
+    const a = document.createElement("a");
+    a.href="data:text/plain;charset=utf-8,"+encodeURIComponent(el);
+    a.download = name;
+    a.click();
 }
 </script>
 
