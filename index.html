@@ -1,103 +1,381 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-<title>Kannada. OCR + Transliterate + Translate</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Kannada → Transliteration & Translation</title>
+
+<!-- Tesseract (OCR) -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<!-- Try to load Aksharamukha for high-quality transliteration (optional) -->
+<script src="https://unpkg.com/aksharamukha-js/dist/aksharamukha.min.js"></script>
+
 <style>
-body{font-family:Arial;margin:10px;max-width:600px}
-textarea{width:100%;height:120px;font-size:16px;margin-top:10px}
-button{padding:10px;width:100%;margin-top:10px}
-.credits{font-family:cursive;text-align:center;margin-top:25px;opacity:.7}
+  :root{
+    --bg:#071021; --muted:#9fb0c8; --card:#0f1720; --txt:#e6eef7;
+    --accent1:#ff6b81; --accent2:#8a2be2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,var(--bg),#04050a);color:var(--txt);font-family:Inter,Arial,Helvetica,sans-serif}
+  .wrap{max-width:920px;margin:12px auto;padding:14px}
+  h1{margin:0;font-size:18px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .card{background:rgba(255,255,255,0.02);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.02);margin-top:12px}
+  #drop{width:96px;height:96px;border-radius:10px;border:2px dashed rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+  textarea{width:100%;min-height:140px;border-radius:8px;padding:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(0,0,0,0.45);color:var(--txt);resize:vertical}
+  .btn{padding:10px;border-radius:8px;border:0;background:linear-gradient(90deg,var(--accent1),var(--accent2));color:white;cursor:pointer;margin-top:8px}
+  .secondary{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+  .small{font-size:13px;color:var(--muted)}
+  .credits{font-family:Pacifico,cursive;color:rgba(255,255,255,0.92);font-size:16px;text-align:right;margin-top:12px}
+  .log{white-space:pre-wrap;color:var(--muted);font-size:13px;max-height:220px;overflow:auto;padding:8px;border-radius:8px;background:rgba(0,0,0,0.2);margin-top:8px}
+  .row{display:flex;gap:10px;align-items:center}
+  @media (max-width:820px){ .topbar{flex-direction:column;align-items:flex-start} }
 </style>
 </head>
 <body>
+<div class="wrap">
 
-<h2>Kannada. OCR + Transliteration + Translation</h2>
+  <div class="topbar">
+    <div>
+      <h1>Kannada → Transliteration & Translation</h1>
+      <div class="small">Online-first OCR (Tesseract) with robust transliteration fallback & LibreTranslate</div>
+    </div>
+    <div style="text-align:right">
+      <div style="display:inline-block;padding:8px;border-radius:8px;background:linear-gradient(90deg,var(--accent1),var(--accent2));font-weight:600">KN → EN</div>
+    </div>
+  </div>
 
-<input type="file" id="imgInput" accept="image/*">
-<button onclick="process()">Convert</button>
+  <div class="card" style="display:flex;gap:14px;flex-wrap:wrap;">
+    <div style="flex:0 0 120px;text-align:center">
+      <div id="drop">Drop / Click</div>
+      <div class="hint">Drag or click (≈1" × 1")</div>
+      <input id="fileInput" type="file" accept="image/*" style="display:none" />
+    </div>
 
-<div id="progress"></div>
+    <div style="flex:1">
+      <div class="row">
+        <div style="flex:1">
+          <div class="small">Preview</div>
+          <img id="preview" style="width:100%;max-height:240px;object-fit:contain;border-radius:8px;margin-top:8px;display:none" />
+        </div>
+      </div>
 
-<h3>OCR Result</h3>
-<textarea id="ocr"></textarea>
-<button onclick="download('ocr','ocr.txt')">Download OCR</button>
+      <div style="margin-top:10px" class="small">Processing starts automatically after upload.</div>
 
-<h3>Transliteration (Latin script)</h3>
-<textarea id="lat"></textarea>
-<button onclick="download('lat','translit.txt')">Download Transliteration</button>
+      <div class="log" id="log">Idle.</div>
+      <div class="progress" style="height:8px;background:#222;border-radius:6px;margin-top:8px;overflow:hidden">
+        <div id="bar" style="width:0;height:100%;background:linear-gradient(90deg,var(--accent1),var(--accent2))"></div>
+      </div>
+    </div>
+  </div>
 
-<h3>English Translation</h3>
-<textarea id="eng"></textarea>
-<button onclick="download('eng','english.txt')">Download Translation</button>
+  <div class="card">
+    <div class="small">OCR Extracted (Kannada / Mixed)</div>
+    <textarea id="ocrText" readonly placeholder="OCR output will appear here..."></textarea>
+    <button class="btn" id="dlOcr">Download OCR</button>
+  </div>
 
-<div class="credits">Created by Animesh</div>
+  <div class="card">
+    <div class="small">Transliteration (Latin)</div>
+    <textarea id="translitText" readonly placeholder="Transliteration will appear here..."></textarea>
+    <button class="btn" id="dlTranslit">Download Transliteration</button>
+  </div>
 
-<!-- OCR script -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <div class="card">
+    <div class="small">Translation (English meaning)</div>
+    <textarea id="transText" readonly placeholder="Translation will appear here..."></textarea>
+    <button class="btn" id="dlTrans">Download Translation</button>
+  </div>
 
-<!-- WORKING TRANSLITERATOR -->
-<script src="https://cdn.jsdelivr.net/npm/transliteration/dist/browser/bundle.umd.min.js"></script>
+  <div class="credits">Created by Animesh</div>
+</div>
 
 <script>
-async function process(){
-  const file=document.getElementById("imgInput").files[0];
-  if(!file){alert("Select image first");return;}
+/* Robust client-side pipeline:
+   - OCR with Tesseract.js
+   - Transliteration: prefer Aksharamukha (if loaded), else fallback JS transliterator
+   - Translation: LibreTranslate public endpoint (libretranslate.de)
+   - Defensive: only run transliteration/translation if OCR text exists
+*/
 
-  document.getElementById("progress").innerText="Processing...";
+const dropBox = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const logEl = document.getElementById('log');
+const barEl = document.getElementById('bar');
 
-  const reader=new FileReader();
-  reader.readAsDataURL(file);
+const ocrTextEl = document.getElementById('ocrText');
+const translitTextEl = document.getElementById('translitText');
+const transTextEl = document.getElementById('transText');
 
-  reader.onload=async()=>{
-    const worker=await Tesseract.createWorker("kan+eng");
-    const {data}=await worker.recognize(reader.result);
-    const text=data.text.trim();
-    document.getElementById("ocr").value=text;
-    await worker.terminate();
-    document.getElementById("progress").innerText="Done!";
+const dlOcr = document.getElementById('dlOcr');
+const dlTranslit = document.getElementById('dlTranslit');
+const dlTrans = document.getElementById('dlTrans');
 
-    transliterate(text);
-    translate(text);
+dropBox.addEventListener('click', ()=> fileInput.click());
+fileInput.addEventListener('change', e => { const f=e.target.files[0]; if(f) startPipeline(f); e.target.value=''; });
+['dragenter','dragover'].forEach(ev => dropBox.addEventListener(ev, e=>{ e.preventDefault(); dropBox.style.borderColor='rgba(255,107,129,0.6)'; }));
+['dragleave','drop'].forEach(ev => dropBox.addEventListener(ev, e=>{ e.preventDefault(); dropBox.style.borderColor='rgba(255,255,255,0.06)'; }));
+dropBox.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) startPipeline(f); });
+
+function log(msg){
+  const t = new Date().toLocaleTimeString();
+  logEl.textContent = `${t} — ${msg}\n` + logEl.textContent;
+  console.log(msg);
+}
+function setProgress(p){ barEl.style.width = Math.max(0, Math.min(100, p)) + '%'; }
+
+/* ----- fallback transliteration: simple Kannada -> Latin mapping ----- */
+/* This is a conservative but practical fallback mapping that handles
+   basic Kannada letters and vowel marks. It is not as complete as
+   Aksharamukha, but it ensures transliteration will always appear.
+*/
+const KAN_MAP = (function(){
+  // independent vowels
+  const V = {
+    '\u0C85':'a','\u0C86':'aa','\u0C87':'i','\u0C88':'ii','\u0C89':'u','\u0C8A':'uu',
+    '\u0C8B':'ru','\u0C8E':'e','\u0C8F':'e','\u0C90':'ai','\u0C92':'o','\u0C93':'o','\u0C94':'au'
   };
+  // consonants
+  const C = {
+    '\u0C95':'k','\u0C96':'kh','\u0C97':'g','\u0C98':'gh','\u0C99':'ng',
+    '\u0C9A':'ch','\u0C9B':'chh','\u0C9C':'j','\u0C9D':'jh','\u0C9E':'ny',
+    '\u0C9F':'tt','\u0CA0':'tth','\u0CA1':'dd','\u0CA2':'ddh','\u0CA3':'nn',
+    '\u0CA4':'t','\u0CA5':'th','\u0CA6':'d','\u0CA7':'dh','\u0CA8':'n',
+    '\u0CAA':'p','\u0CAB':'ph','\u0CAC':'b','\u0CAD':'bh','\u0CAE':'m',
+    '\u0CAF':'y','\u0CB0':'r','\u0CB2':'l','\u0CB3':'ll','\u0CB5':'v',
+    '\u0CB6':'sh','\u0CB7':'ss','\u0CB8':'s','\u0CB9':'h',
+    '\u0C82':'m','\u0C83':'ah'
+  };
+  // vowel signs (matras) (combine with previous consonant)
+  const M = {
+    '\u0CBE':'aa','\u0CBF':'i','\u0CC0':'ii','\u0CC1':'u','\u0CC2':'uu','\u0CC3':'r',
+    '\u0CC6':'e','\u0CC7':'ee','\u0CC8':'ai','\u0CCA':'o','\u0CCB':'oo','\u0CCC':'au'
+  };
+  const SIGN = {'\u0CCD': true}; // virama
+  return {V,C,M,SIGN};
+})();
+
+function fallbackTransliterate(text){
+  // naive algorithm: iterate over characters, map independent vowels/consonants + matras
+  let out = '';
+  for (let i=0; i<text.length; i++){
+    const ch = text[i];
+    if (KAN_MAP.V[ch]) { out += KAN_MAP.V[ch] + ' '; continue; }
+    if (KAN_MAP.C[ch]) {
+      // lookahead for vowel sign
+      const next = text[i+1];
+      if (next && KAN_MAP.M[next]) {
+        out += KAN_MAP.C[ch] + KAN_MAP.M[next];
+        i++; // consume matra
+      } else if (next && KAN_MAP.SIGN[next]) {
+        // consonant with virama (halant) -> bare consonant
+        out += KAN_MAP.C[ch];
+        i++;
+      } else {
+        // implicit 'a' vowel
+        out += KAN_MAP.C[ch] + 'a';
+      }
+      out += ' ';
+      continue;
+    }
+    // punctuation, digits, ASCII: pass through
+    out += ch;
+  }
+  // normalize spaces
+  return out.replace(/\s+/g,' ').trim();
 }
 
-function transliterate(text){
-  try{
-    document.getElementById("lat").value=transliterate.transliterate(text);
-  }catch(e){
-    document.getElementById("lat").value="Transliteration failed.";
+/* transliterate entry: prefer Aksharamukha if present, else fallback */
+function transliterateText(knText){
+  if (!knText || !knText.trim()) return '';
+  try {
+    if (window.Aksharamukha && window.Aksharamukha.convert) {
+      // high-quality library: Kannada -> ISO (Latin) (this may be slower but accurate)
+      return window.Aksharamukha.convert('Kannada','ISO', knText);
+    } else {
+      // fallback
+      return fallbackTransliterate(knText);
+    }
+  } catch(err){
+    console.error('Transliteration error', err);
+    return fallbackTransliterate(knText);
   }
 }
 
-async function translate(text){
-  try{
-    const res=await fetch("https://libretranslate.de/translate",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        q:text,
-        source:"kn",
-        target:"en",
-        format:"text"
-      })
+/* translation via LibreTranslate */
+async function translateText(text){
+  if (!text || !text.trim()) return '';
+  try {
+    const resp = await fetch('https://libretranslate.de/translate', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ q: text, source:'kn', target:'en', format:'text' })
     });
-    const json=await res.json();
-    document.getElementById("eng").value=json.translatedText;
-  }catch(e){
-    document.getElementById("eng").value="Translation failed.";
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const j = await resp.json();
+    return j.translatedText || (j.result && j.result[0]) || '';
+  } catch (e) {
+    console.error('Translation error', e);
+    throw e;
   }
 }
 
-function download(id,name){
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(new Blob([
-    document.getElementById(id).value
-  ]));
-  a.download=name;
+/* preprocess image (resize + contrast) */
+function preprocessImageToDataURL(img, maxW=1200){
+  const c = document.createElement('canvas');
+  const scale = Math.min(1, maxW / img.width);
+  c.width = Math.round(img.width * scale);
+  c.height = Math.round(img.height * scale);
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img,0,0,c.width,c.height);
+
+  // simple contrast stretch
+  try {
+    const id = ctx.getImageData(0,0,c.width,c.height);
+    const d = id.data;
+    let min=255, max=0;
+    for (let i=0;i<d.length;i+=4){
+      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      if (lum < min) min = lum;
+      if (lum > max) max = lum;
+    }
+    const range = Math.max(1, max-min);
+    for (let i=0;i<d.length;i+=4){
+      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      const v = Math.round((lum - min) * 255 / range);
+      d[i] = d[i+1] = d[i+2] = v;
+    }
+    ctx.putImageData(id,0,0);
+  } catch(e) {
+    // ignore if cross-origin pixels etc.
+    console.warn('contrast adjust failed', e);
+  }
+  return c.toDataURL('image/png');
+}
+
+/* OCR using Tesseract.js with progress */
+async function tesseractRecognize(dataUrl){
+  const worker = Tesseract.createWorker({
+    logger: m => {
+      if (m.status) {
+        if (m.status === 'recognizing text') setProgress(Math.round(m.progress*100));
+        log('Tesseract: ' + m.status + (m.progress ? ' ' + Math.round(m.progress*100) + '%' : ''));
+      }
+    }
+  });
+  try {
+    await worker.load();
+    await worker.loadLanguage('kan+eng'); // ensure engine knows languages
+    await worker.initialize('kan+eng');
+    const res = await worker.recognize(dataUrl);
+    await worker.terminate();
+    return res.data || {};
+  } catch (err) {
+    try { await worker.terminate(); } catch(_) {}
+    throw err;
+  }
+}
+
+/* main pipeline */
+async function startPipeline(file){
+  try {
+    log(`File: ${file.name} (${Math.round(file.size/1024)} KB)`);
+    // preview
+    const url = URL.createObjectURL(file);
+    preview.src = url; preview.style.display = 'block';
+
+    log('1) Preprocessing image...');
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const preDataUrl = preprocessImageToDataURL(img, 1200);
+
+    setProgress(5);
+    log('2) Running OCR (Tesseract) ...');
+    let tData;
+    try {
+      tData = await tesseractRecognize(preDataUrl);
+      log('Tesseract extracted length: ' + ((tData && tData.text) ? tData.text.length : 0));
+    } catch(e) {
+      log('Tesseract failed: ' + (e && e.message ? e.message : String(e)));
+      setProgress(0);
+      ocrTextEl.value = '';
+      translitTextEl.value = 'Transliteration failed.';
+      transTextEl.value = 'Translation failed.';
+      return;
+    }
+
+    const finalText = (tData && tData.text) ? tData.text.trim() : '';
+    if (!finalText) {
+      log('No useful OCR text found.');
+      ocrTextEl.value = '';
+      translitTextEl.value = 'Transliteration failed: no OCR text.';
+      transTextEl.value = 'Translation failed: no OCR text.';
+      setProgress(0);
+      return;
+    }
+
+    ocrTextEl.value = finalText;
+    setProgress(60);
+
+    // Transliteration (Aksharamukha preferred; fallback otherwise)
+    log('3) Transliteration...');
+    try {
+      const translit = transliterateText(finalText);
+      translitTextEl.value = translit || '';
+      log('Transliteration completed.');
+    } catch (e) {
+      translitTextEl.value = 'Transliteration failed.';
+      log('Transliteration error: ' + (e && e.message ? e.message : e));
+    }
+    setProgress(80);
+
+    // Translation (LibreTranslate)
+    log('4) Translation (LibreTranslate)...');
+    try {
+      const translated = await translateText(finalText);
+      transTextEl.value = translated || '';
+      log('Translation completed.');
+    } catch (e) {
+      transTextEl.value = 'Translation failed.';
+      log('Translation error: ' + (e && e.message ? e.message : e));
+    }
+    setProgress(100);
+    log('Pipeline finished.');
+  } catch (err) {
+    log('Pipeline error: ' + (err && err.message ? err.message : String(err)));
+    setProgress(0);
+  }
+}
+
+/* UI helpers */
+function log(msg){ const ts = new Date().toLocaleTimeString(); logEl.textContent = ts + ' — ' + msg + '\n' + logEl.textContent; console.log(msg); }
+function setProgress(v){ barEl.style.width = Math.max(0,Math.min(100, Math.round(v))) + '%'; }
+
+/* Download buttons */
+dlOcr.addEventListener('click', ()=> downloadText('ocrText','ocr.txt'));
+dlTranslit.addEventListener('click', ()=> downloadText('translitText','translit.txt'));
+dlTrans.addEventListener('click', ()=> downloadText('transText','translation.txt'));
+
+function downloadText(areaId, filename){
+  const txt = document.getElementById(areaId).value || '';
+  const blob = new Blob([txt], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
   a.click();
 }
-</script>
 
+/* Expose startPipeline for console & startFlow */
+window.startPipeline = startPipeline;
+
+/* initial log */
+log('Ready. Drop an image in the 1\" box or click it.');
+
+/* End */
+</script>
 </body>
 </html>
