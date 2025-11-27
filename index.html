@@ -2,144 +2,179 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Smart OCR App</title>
+<title>OCR Reader</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 body {
-  font-family: Arial;
-  background: #121212;
-  color: white;
-  padding: 20px;
+  background:#0d1117;
+  color:white;
+  font-family:Arial;
+  margin:0;
+  padding:0;
 }
+
+.container {
+  padding:15px;
+  max-width:600px;
+  margin:auto;
+}
+
+#drop {
+  border:2px dashed #888;
+  padding:40px;
+  text-align:center;
+  border-radius:10px;
+  margin-bottom:10px;
+}
+
+#orig {
+  width:100%;
+  max-width:100%;
+  display:none;
+  margin-bottom:15px;
+  border-radius:10px;
+}
+
 #output {
-  white-space: pre-wrap;
-  font-size: 16px;
-  background: #222;
-  padding: 15px;
-  border-radius: 8px;
-  margin-top: 20px;
+  background:#111;
+  padding:15px;
+  white-space:pre-wrap;
+  border-radius:10px;
+  margin-top:15px;
+  font-size:15px;
 }
-#preview {
-  max-width: 100%;
-  margin-top: 15px;
-  display: none;
+
+#log {
+  margin-top:10px;
+  font-size:14px;
+  color:#9f9;
 }
-#progress {
-  margin-top: 10px;
+
+.progress {
+  width:100%;
+  height:10px;
+  background:#333;
+  border-radius:5px;
+  margin-top:10px;
+  overflow:hidden;
 }
-.progress-container {
-  width: 100%;
-  height: 10px;
-  background: #333;
-  border-radius: 6px;
-  margin-top: 10px;
-}
-.progress-bar {
-  height: 100%;
-  width: 0%;
-  background: lime;
-  border-radius: 6px;
+.bar {
+  width:0%;
+  height:10px;
+  background:#4caf50;
 }
 </style>
 </head>
 
 <body>
+<div class="container">
 
-<h2>Image OCR Reader (Smart Enhanced)</h2>
-<input type="file" id="fileInput">
+  <h2>Image OCR (English)</h2>
 
-<br>
-<img id="preview">
+  <div id="drop">
+    Drop or Click
+    <br>(mobile & desktop)
+    <input id="fileInput" type="file" accept="image/*" style="display:none;">
+  </div>
 
-<div class="progress-container">
-  <div id="bar" class="progress-bar"></div>
+  <img id="orig">
+
+  <div class="progress"><div class="bar" id="bar"></div></div>
+  <div id="log"></div>
+
+  <div id="output">Waiting for image...</div>
+
 </div>
-
-<div id="progress"></div>
-
-<pre id="output"></pre>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <script>
+const drop = document.getElementById("drop");
 const fileInput = document.getElementById("fileInput");
-const preview = document.getElementById("preview");
+const orig = document.getElementById("orig");
 const output = document.getElementById("output");
+const logDiv = document.getElementById("log");
 const bar = document.getElementById("bar");
-const progressDiv = document.getElementById("progress");
 
-fileInput.addEventListener("change", function() {
-  const file = fileInput.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = function(e) {
-
-    preview.src = e.target.result;
-    preview.style.display = "block";
-
-    setTimeout(() => runOCR(preview), 300);
-  };
-  reader.readAsDataURL(file);
+drop.addEventListener("click",()=>fileInput.click());
+drop.addEventListener("dragover",e=>e.preventDefault());
+drop.addEventListener("drop", e=>{
+  e.preventDefault();
+  handle(e.dataTransfer.files[0]);
 });
 
-async function preprocess(img) {
-  const cvs = document.createElement("canvas");
-  const ctx = cvs.getContext("2d");
+fileInput.addEventListener("change", e=>{
+  handle(e.target.files[0]);
+});
 
-  cvs.width = img.width;
-  cvs.height = img.height;
-  ctx.drawImage(img, 0, 0);
+async function handle(file){
+  const url = URL.createObjectURL(file);
+  orig.src = url;
+  orig.style.display="block";
+  output.textContent="Processing...";
+  logDiv.textContent="";
 
-  let data = ctx.getImageData(0, 0, cvs.width, cvs.height);
-  let px = data.data;
+  await runOCR(url);
+}
 
-  // grayscale + noise + contrast
-  for (let i = 0; i < px.length; i += 4) {
-    let avg = (px[i] + px[i+1] + px[i+2]) / 3;
-    avg = Math.min(255, avg * 1.25); // increase contrast
-    px[i] = px[i+1] = px[i+2] = avg;
+async function preprocess(img){
+  const maxSize=1500;
+
+  let scale=Math.min(
+    maxSize/img.width,
+    maxSize/img.height,
+    1
+  );
+
+  const cvs=document.createElement("canvas");
+  const ctx=cvs.getContext("2d");
+
+  cvs.width=img.width*scale;
+  cvs.height=img.height*scale;
+  ctx.drawImage(img,0,0,cvs.width,cvs.height);
+
+  let data=ctx.getImageData(0,0,cvs.width,cvs.height);
+  let px=data.data;
+
+  for(let i=0;i<px.length;i+=4){
+    let avg=(px[i]+px[i+1]+px[i+2])/3;
+    avg=Math.min(255,avg*1.3);
+    px[i]=px[i+1]=px[i+2]=avg;
   }
-  ctx.putImageData(data, 0, 0);
+
+  ctx.putImageData(data,0,0);
   return cvs;
 }
 
-async function runOCR(img) {
+async function runOCR(url){
+  logDiv.textContent="Loading image...";
+  const img=new Image();
+  img.src=url;
 
-  const processed = await preprocess(img);
+  await img.decode();
+  const processed=await preprocess(img);
 
-  output.textContent = "Processing...";
-  progressDiv.textContent = "";
+  logDiv.textContent="Running OCR...";
 
-  const worker = await Tesseract.createWorker();
-
-  await worker.loadLanguage('eng');
-  await worker.initialize('eng');
-
-  await worker.setParameters({
-    tessedit_char_whitelist:
-      '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/.,:-() ',
-    preserve_interword_spaces: '1'
-  });
-
-  const { data } = await worker.recognize(processed, {
-    logger: m => {
-      if (m.status === "recognizing text") {
-        bar.style.width = Math.round(m.progress * 100) + "%";
-        progressDiv.textContent =
-          `${Math.round(m.progress * 100)}% completed`;
+  const worker=await Tesseract.createWorker({
+    logger:m=>{
+      if(m.status==="recognizing text"){
+        bar.style.width=Math.round(m.progress*100)+"%";
+        logDiv.textContent=Math.round(m.progress*100)+"% completed";
       }
     }
   });
 
+  await worker.loadLanguage('eng');
+  await worker.initialize('eng');
+
+  const {data}=await worker.recognize(processed);
+
   await worker.terminate();
 
-  let clean = data.text
-    .replace(/[^\x20-\x7E\n]/g, '')      // remove corrupted chars
-    .replace(/[ ]{2,}/g, ' ')           // extra spaces cleanup
-    .trim();
-
-  output.textContent = clean;
+  output.textContent=data.text.trim();
+  logDiv.textContent="Done ✓";
 }
 </script>
 </body>
