@@ -238,12 +238,11 @@ async function preprocessImage(img, maxSize=1000){
 async function ocrSpaceRecognize(dataUrl, apiKey){
   const key = (apiKey && apiKey.trim()) ? apiKey.trim() : 'helloworld';
   const base64 = dataUrl.split(',')[1];
-  const form = new FormData();
-  form.append('base64Image','data:image/png;base64,'+base64);
-  form.append('language','kan+eng');
-  form.append('isOverlayRequired','true');
-  form.append('OCREngine','2'); // try engine 2
-  form.append('apikey', key);
+const formData = new FormData();
+formData.append("file", file);
+formData.append("apikey", "helloworld");
+formData.append("language", "kan,eng");
+formData.append("isOverlayRequired", "false");
   log('Calling OCR.space (online) ...');
   const resp = await fetch('https://api.ocr.space/parse/image', { method:'POST', body: form });
   if (!resp.ok) throw new Error('OCR.space HTTP ' + resp.status);
