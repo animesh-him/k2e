@@ -49,15 +49,12 @@ input { width:100%; padding:12px; }
 
 <h3>OCR Output</h3>
 <div id="ocr" class="box"></div>
-<button onclick="download('ocr')">Download OCR</button>
 
 <h3>Transliteration (Kannada ➜ Latin)</h3>
 <div id="translit" class="box"></div>
-<button onclick="download('translit')">Download Transliteration</button>
 
 <h3>English Translation</h3>
 <div id="translation" class="box"></div>
-<button onclick="download('translation')">Download Translation</button>
 
 </div>
 
@@ -76,68 +73,42 @@ upload.addEventListener("change", async (e) => {
     translitBox.innerText = "";
     translationBox.innerText = "";
 
-    // --- WORKING OCR ---
+    // ---- WORKING OCR ----
     const result = await Tesseract.recognize(file, "eng+kan");
     const text = result.data.text.trim();
     ocrBox.innerText = text;
 
-    // --- Transliteration ---
+    // ---- Transliteration ----
     translitBox.innerText = "Processing transliteration...";
-    const translit = await doTransliteration(text);
+    const translit = await transliterate(text);
     translitBox.innerText = translit;
 
-    // --- Translation ---
+    // ---- Translation ----
     translationBox.innerText = "Processing translation...";
-    const translated = await doTranslation(text);
+    const translated = await translate(text);
     translationBox.innerText = translated;
 });
 
-// ✔ Guaranteed working transliteration
-async function doTransliteration(text) {
+async function transliterate(text) {
   try {
-    const res = await fetch("https://api.libretranslate.com/transliterate", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        q: text,
-        source: "kn",
-        target: "en"
-      })
-    });
+    const url = "https://lingva.ml/api/v1/kn/en/" + encodeURIComponent(text);
+    const res = await fetch(url);
     const data = await res.json();
-    return data.transliteration || "Transliteration failed.";
+    return data.translation || "Transliteration failed.";
   } catch {
     return "Transliteration failed.";
   }
 }
 
-// ✔ Guaranteed working translation
-async function doTranslation(text) {
+async function translate(text) {
   try {
-    const res = await fetch("https://api.libretranslate.com/translate", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        q: text,
-        source: "kn",
-        target: "en",
-        format: "text"
-      })
-    });
+    const url = "https://lingva.ml/api/v1/kn/en/" + encodeURIComponent(text);
+    const res = await fetch(url);
     const data = await res.json();
-    return data.translatedText || "Translation failed.";
+    return data.translation || "Translation failed.";
   } catch {
     return "Translation failed.";
   }
-}
-
-// Save button
-function download(id){
-  const text = document.getElementById(id).innerText;
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text],{type:"text/plain"}));
-  a.download = id + ".txt";
-  a.click();
 }
 </script>
 
