@@ -23,9 +23,9 @@ button{padding:10px;width:100%;margin-top:10px}
 <textarea id="ocr"></textarea>
 <button onclick="download('ocr','ocr.txt')">Download OCR</button>
 
-<h3>Transliteration</h3>
+<h3>Transliteration (Latin script)</h3>
 <textarea id="lat"></textarea>
-<button onclick="download('lat','transliteration.txt')">Download Transliteration</button>
+<button onclick="download('lat','translit.txt')">Download Transliteration</button>
 
 <h3>English Translation</h3>
 <textarea id="eng"></textarea>
@@ -33,18 +33,16 @@ button{padding:10px;width:100%;margin-top:10px}
 
 <div class="credits">Created by Animesh</div>
 
+<!-- OCR script -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
-<!-- FIXED WORKING TRANSLITERATOR -->
-<script src="https://cdn.jsdelivr.net/npm/kannadajs"></script>
-
-<!-- FIXED TRANSLATION LIBRARY -->
-<script src="https://cdn.jsdelivr.net/npm/@vitalets/google-translate-api/dist/browser.min.js"></script>
+<!-- WORKING TRANSLITERATOR -->
+<script src="https://cdn.jsdelivr.net/npm/transliteration/dist/browser/bundle.umd.min.js"></script>
 
 <script>
 async function process(){
   const file=document.getElementById("imgInput").files[0];
-  if(!file){alert("Select an image first");return;}
+  if(!file){alert("Select image first");return;}
 
   document.getElementById("progress").innerText="Processing...";
 
@@ -59,28 +57,45 @@ async function process(){
     await worker.terminate();
     document.getElementById("progress").innerText="Done!";
 
-    try{
-      const latin=kannada.transliterate(text);
-      document.getElementById("lat").value=latin;
-    }catch(e){
-      document.getElementById("lat").value="Transliteration failed";
-    }
-
-    try{
-      const r=await window.translate(text,{to:"en"});
-      document.getElementById("eng").value=r.text;
-    }catch(e){
-      document.getElementById("eng").value="Translation failed";
-    }
+    transliterate(text);
+    translate(text);
   };
+}
+
+function transliterate(text){
+  try{
+    document.getElementById("lat").value=transliterate.transliterate(text);
+  }catch(e){
+    document.getElementById("lat").value="Transliteration failed.";
+  }
+}
+
+async function translate(text){
+  try{
+    const res=await fetch("https://libretranslate.de/translate",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        q:text,
+        source:"kn",
+        target:"en",
+        format:"text"
+      })
+    });
+    const json=await res.json();
+    document.getElementById("eng").value=json.translatedText;
+  }catch(e){
+    document.getElementById("eng").value="Translation failed.";
+  }
 }
 
 function download(id,name){
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([
-   document.getElementById(id).value
+    document.getElementById(id).value
   ]));
-  a.download=name;a.click();
+  a.download=name;
+  a.click();
 }
 </script>
 
