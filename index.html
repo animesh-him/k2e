@@ -1,201 +1,146 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>OCR + Transliteration + Translation</title>
-
-<script src="https://unpkg.com/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
+<meta charset="UTF-8">
+<title>Smart OCR App</title>
 
 <style>
-    body {
-        margin:0;
-        padding:0;
-        background:#0e0f15;
-        color:white;
-        font-family: 'Inter', sans-serif;
-        text-align:center;
-    }
-
-    .container {
-        max-width:500px;
-        margin:0 auto;
-        padding:15px;
-    }
-
-    #dropzone {
-        border:2px dashed #555;
-        border-radius:12px;
-        padding:20px;
-        font-size:18px;
-        margin-top:15px;
-        transition:0.3s;
-        width:100%;
-    }
-
-    #dropzone.dragover {
-        border-color:#ff00ee;
-        background:#1a1a28;
-    }
-
-    img {
-        width:100%;
-        border-radius:12px;
-        margin-top:15px;
-    }
-
-    .output-box {
-        background:#11141e;
-        padding:15px;
-        margin-top:15px;
-        border-radius:12px;
-        text-align:left;
-        font-size:16px;
-        white-space:pre-line;
-        overflow-x:auto;
-    }
-
-    .log {
-        margin-top:15px;
-        background:#00000050;
-        padding:10px;
-        border-radius:8px;
-        font-size:14px;
-        color:#ddd;
-        white-space:pre-line;
-        text-align:left;
-    }
-
-    @media(max-width:480px) {
-        body { font-size: 16px; }
-    }
-
+body {
+  font-family: Arial;
+  background: #121212;
+  color: white;
+  padding: 20px;
+}
+#output {
+  white-space: pre-wrap;
+  font-size: 16px;
+  background: #222;
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+#preview {
+  max-width: 100%;
+  margin-top: 15px;
+  display: none;
+}
+#progress {
+  margin-top: 10px;
+}
+.progress-container {
+  width: 100%;
+  height: 10px;
+  background: #333;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: lime;
+  border-radius: 6px;
+}
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<h2>Image OCR Reader (Smart Enhanced)</h2>
+<input type="file" id="fileInput">
 
-    <!-- DRAG & DROP COMES FIRST -->
-    <div id="dropzone">Drop / Click to upload</div>
-    <input id="fileInput" type="file" accept="image/*" style="display:none">
+<br>
+<img id="preview">
 
-    <!-- ORIGINAL IMAGE -->
-    <img id="preview" style="display:none;">
-
-    <!-- OCR -->
-    <div class="output-box" id="ocrText"></div>
-
-    <!-- TRANSLIT -->
-    <div class="output-box" id="translit"></div>
-
-    <!-- TRANSLATION -->
-    <div class="output-box" id="translated"></div>
-
-    <div class="log" id="log"></div>
-
+<div class="progress-container">
+  <div id="bar" class="progress-bar"></div>
 </div>
 
+<div id="progress"></div>
+
+<pre id="output"></pre>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
 <script>
-// ------------------------------------------------
-// UTILS
-// ------------------------------------------------
-function log(msg){
-    document.getElementById("log").innerText += msg + "\n";
-}
-
-// ------------------------------------------------
-// FILE PICK SETUP
-// ------------------------------------------------
-const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("fileInput");
+const preview = document.getElementById("preview");
+const output = document.getElementById("output");
+const bar = document.getElementById("bar");
+const progressDiv = document.getElementById("progress");
 
-dropzone.onclick = ()=>{
-    fileInput.click();
-};
+fileInput.addEventListener("change", function() {
+  const file = fileInput.files[0];
+  if (!file) return;
 
-fileInput.onchange = (e)=>{
-    const file = e.target.files[0];
-    if(file) handleFile(file);
-};
+  const reader = new FileReader();
+  reader.onload = function(e) {
 
-dropzone.ondragover = (e)=>{
-    e.preventDefault();
-    dropzone.classList.add("dragover");
-};
+    preview.src = e.target.result;
+    preview.style.display = "block";
 
-dropzone.ondragleave = ()=>{
-    dropzone.classList.remove("dragover");
-};
+    setTimeout(() => runOCR(preview), 300);
+  };
+  reader.readAsDataURL(file);
+});
 
-dropzone.ondrop = (e)=>{
-    e.preventDefault();
-    dropzone.classList.remove("dragover");
-    const file = e.dataTransfer.files[0];
-    if(file) handleFile(file);
-};
+async function preprocess(img) {
+  const cvs = document.createElement("canvas");
+  const ctx = cvs.getContext("2d");
 
-// ------------------------------------------------
-// MAIN PROCESS
-// ------------------------------------------------
-function handleFile(file){
-    log("File received");
-    preview.src = URL.createObjectURL(file);
-    preview.style.display="block";
-    runOCR(file);
+  cvs.width = img.width;
+  cvs.height = img.height;
+  ctx.drawImage(img, 0, 0);
+
+  let data = ctx.getImageData(0, 0, cvs.width, cvs.height);
+  let px = data.data;
+
+  // grayscale + noise + contrast
+  for (let i = 0; i < px.length; i += 4) {
+    let avg = (px[i] + px[i+1] + px[i+2]) / 3;
+    avg = Math.min(255, avg * 1.25); // increase contrast
+    px[i] = px[i+1] = px[i+2] = avg;
+  }
+  ctx.putImageData(data, 0, 0);
+  return cvs;
 }
 
-// ------------------------------------------------
-// OCR
-// ------------------------------------------------
-function runOCR(file){
-    log("Starting OCR...");
-    Tesseract.recognize(file,'eng',{ logger:m=>{} }).then(({data})=>{
+async function runOCR(img) {
 
-        if(!data.text || data.text.trim()===""){
-            document.getElementById("ocrText").innerText="No text extracted";
-            return;
-        }
+  const processed = await preprocess(img);
 
-        document.getElementById("ocrText").innerText=data.text;
-        log("OCR completed");
+  output.textContent = "Processing...";
+  progressDiv.textContent = "";
 
-        runTransliteration(data.text);
-    });
-}
+  const worker = await Tesseract.createWorker();
 
-// ------------------------------------------------
-// SIMPLE TRANSLITERATION (demo rule based)
-// ------------------------------------------------
-function runTransliteration(text){
-    log("Running transliteration...");
+  await worker.loadLanguage('eng');
+  await worker.initialize('eng');
 
-    // This keeps same behavior as before.
-    // You can extend later rule based mapping here.
+  await worker.setParameters({
+    tessedit_char_whitelist:
+      '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/.,:-() ',
+    preserve_interword_spaces: '1'
+  });
 
-    const output = text;
-    document.getElementById("translit").innerText = output;
+  const { data } = await worker.recognize(processed, {
+    logger: m => {
+      if (m.status === "recognizing text") {
+        bar.style.width = Math.round(m.progress * 100) + "%";
+        progressDiv.textContent =
+          `${Math.round(m.progress * 100)}% completed`;
+      }
+    }
+  });
 
-    runTranslation(text);
-}
+  await worker.terminate();
 
-// ------------------------------------------------
-// SIMPLE TRANSLATION API (free CDN)
-// ------------------------------------------------
-function runTranslation(text){
-    log("Running translation...");
+  let clean = data.text
+    .replace(/[^\x20-\x7E\n]/g, '')      // remove corrupted chars
+    .replace(/[ ]{2,}/g, ' ')           // extra spaces cleanup
+    .trim();
 
-    fetch("https://api.mymemory.translated.net/get?q="
-        + encodeURIComponent(text) + "&langpair=kn|en")
-    .then(r=>r.json())
-    .then(res=>{
-        document.getElementById("translated").innerText =
-            res.responseData.translatedText;
-        log("Translation completed");
-    })
+  output.textContent = clean;
 }
 </script>
-
 </body>
 </html>
