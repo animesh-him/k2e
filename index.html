@@ -28,6 +28,7 @@
   .credits{font-family:Pacifico,cursive;text-align:right;margin-top:10px;color:rgba(255,255,255,0.9)}
   label.input-row{display:block;margin-top:10px;font-size:13px}
   input.text{width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--text)}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
   @media(max-width:820px){ .grid{flex-direction:column} .col{min-width:unset} }
 </style>
 </head>
@@ -36,7 +37,7 @@
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div>
         <h1>Hybrid OCR — Tesseract + PaddleOCR fallback → English Translation</h1>
-        <div class="lead">Preprocess → Tesseract (kan+eng) → PaddleOCR (optional) → chunked translation with multiple fallbacks</div>
+        <div class="lead">Preprocess → Tesseract (kan then eng) → PaddleOCR (optional) → chunked translation with fallbacks</div>
       </div>
     </div>
 
@@ -53,6 +54,8 @@
 
         <label class="input-row small">PaddleOCR server endpoint (optional; POST image data URL or multipart):</label>
         <input id="paddleEndpoint" class="text" placeholder="https://your-paddle-ocr-server/ocr" />
+
+        <div class="hint">Tip: For best OCR, use well-lit, flat images. Turtle-neck or shadowed text reduces accuracy.</div>
 
         <div style="margin-top:10px" class="small">Pipeline Log</div>
         <div id="log" class="log">Idle. Upload an image to start.</div>
@@ -80,16 +83,16 @@
 
 <script>
 /* =========================
-   CONFIG - tweak as needed
+   CONFIG
    ========================= */
-const ROTATIONS = [-5,-4,-3,-2,-1,0,1,2,3,4,5];  // try more angles for deskew
-const MAX_DIM = 1800;        // upscale target (improves OCR for small text)
-const CHUNK_SIZE = 420;      // keep < 500 to avoid some translator limits
-const OCR_TIMEOUT = 30000;
+const ROTATIONS = [-5,-3,-2,-1,0,1,2,3,5];  // rotations to try
+const MAX_DIM = 1800;        // max resize (upscale small images for better OCR)
+const CHUNK_SIZE = 420;      // translation chunk size
+const OCR_TIMEOUT = 30000;   // ms per recognition
 const TRANSLATION_TIMEOUT = 12000;
-const MIN_KANNADA_CHARS_FOR_CONFIDENCE = 20; // heuristic
+const MIN_KANNADA_CONF = 15;
 
-// translation endpoints (fallback list)
+/* translators fallback list */
 const TRANSLATORS = [
   { name:'MyMemory', type:'get', build: t => `https://api.mymemory.translated.net/get?q=${encodeURIComponent(t)}&langpair=kn|en` },
   { name:'libretranslate.de', type:'post', url:'https://libretranslate.de/translate' },
@@ -113,7 +116,7 @@ const retryTrans = document.getElementById('retryTrans');
 
 let lastFile = null, lastCombinedText = '', lastTranslation = '';
 
-/* ============= utilities ============= */
+/* ============= helpers ============= */
 function log(msg){
   const ts = new Date().toLocaleTimeString();
   logEl.textContent = `${ts} — ${msg}\n` + logEl.textContent;
@@ -124,14 +127,14 @@ function showTrans(t){ transBox.textContent = t || '(no translation)'; }
 function downloadText(filename, text){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text||''],{type:'text/plain'})); a.download=filename; a.click(); }
 function copyText(t){ navigator.clipboard?.writeText(t).then(()=>alert('Copied'), ()=>alert('Copy failed')); }
 
-/* ============= image preprocessing helpers ============= */
+/* ================= Image preprocessing utilities ================= */
+
 function resizeCanvas(img, maxDim=MAX_DIM){
-  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-  // upscale if smaller than maxDim to improve OCR on small text
-  const useScale = Math.max(scale, Math.min(2, maxDim / Math.max(img.width, img.height)));
+  // upscale small images up to 2x for better OCR
+  const scale = Math.min(2, Math.max(1, maxDim / Math.max(img.width, img.height)));
   const c = document.createElement('canvas');
-  c.width = Math.round(img.width * useScale);
-  c.height = Math.round(img.height * useScale);
+  c.width = Math.round(img.width * scale);
+  c.height = Math.round(img.height * scale);
   const ctx = c.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
@@ -140,8 +143,10 @@ function resizeCanvas(img, maxDim=MAX_DIM){
 }
 
 function toGrayscale(c){
-  const ctx = c.getContext('2d'), id = ctx.getImageData(0,0,c.width,c.height), d = id.data;
-  for(let i=0;i<d.length;i+=4){
+  const ctx = c.getContext('2d');
+  const id = ctx.getImageData(0,0,c.width,c.height);
+  const d = id.data;
+  for (let i=0;i<d.length;i+=4){
     const v = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
     d[i]=d[i+1]=d[i+2]=v;
   }
@@ -149,78 +154,102 @@ function toGrayscale(c){
   return c;
 }
 
-function contrastBoost(c, factor=1.6){
-  try{
-    const ctx = c.getContext('2d'), id = ctx.getImageData(0,0,c.width,c.height), d = id.data;
-    // simple linear contrast around 128
-    const f = factor;
-    for(let i=0;i<d.length;i+=4){
-      for(let k=0;k<3;k++){
+function contrastBoost(c, factor=1.5){
+  try {
+    const ctx = c.getContext('2d');
+    const id = ctx.getImageData(0,0,c.width,c.height);
+    const d = id.data;
+    for (let i=0;i<d.length;i+=4){
+      for (let k=0;k<3;k++){
         let v = d[i+k];
-        v = ((v - 128) * f) + 128;
+        v = ((v - 128) * factor) + 128;
         d[i+k] = Math.max(0, Math.min(255, Math.round(v)));
       }
     }
     ctx.putImageData(id,0,0);
-  } catch(e){ log('contrastBoost error:'+e.message); }
+  } catch(e){ log('contrastBoost err:'+e.message); }
   return c;
+}
+
+function applyCanvasFilter(c, filter){
+  try {
+    const tmp = document.createElement('canvas');
+    tmp.width = c.width; tmp.height = c.height;
+    const tctx = tmp.getContext('2d');
+    tctx.filter = filter;
+    tctx.drawImage(c,0,0);
+    return tmp;
+  } catch(e){
+    return c;
+  }
 }
 
 function otsuThreshold(c){
   try {
-    const ctx=c.getContext('2d'); const w=c.width,h=c.height; const id=ctx.getImageData(0,0,w,h); const d=id.data;
+    const ctx = c.getContext('2d');
+    const w = c.width, h = c.height;
+    const id = ctx.getImageData(0,0,w,h);
+    const d = id.data;
     const hist = new Array(256).fill(0);
-    for(let i=0;i<d.length;i+=4) hist[d[i]]++;
+    for (let i=0;i<d.length;i+=4) hist[d[i]]++;
     const total = w*h;
-    let sum = 0;
-    for(let t=0;t<256;t++) sum += t * hist[t];
-    let sumB = 0, wB = 0, threshold = 0, varMax = 0;
-    for(let t=0;t<256;t++){
+    let sum=0;
+    for (let t=0;t<256;t++) sum += t*hist[t];
+    let sumB=0, wB=0, varMax=0, threshold=0;
+    for (let t=0;t<256;t++){
       wB += hist[t];
       if (wB === 0) continue;
       const wF = total - wB;
       if (wF === 0) break;
-      sumB += t * hist[t];
-      const mB = sumB / wB;
-      const mF = (sum - sumB) / wF;
+      sumB += t*hist[t];
+      const mB = sumB/wB;
+      const mF = (sum - sumB)/wF;
       const varBetween = wB * wF * (mB - mF) * (mB - mF);
       if (varBetween > varMax){ varMax = varBetween; threshold = t; }
     }
-    for(let i=0;i<d.length;i+=4){ const v = d[i] > threshold ? 255 : 0; d[i]=d[i+1]=d[i+2]=v; }
+    for (let i=0;i<d.length;i+=4){
+      const v = d[i] > threshold ? 255 : 0;
+      d[i]=d[i+1]=d[i+2]=v;
+    }
     ctx.putImageData(id,0,0);
-  } catch(e){ log('otsu error:'+e.message); }
+  } catch(e){ log('otsu err:'+e.message); }
   return c;
 }
 
 function morphologicalOpen(c, iterations=1){
-  try{
-    const w=c.width,h=c.height, ctx=c.getContext('2d'), id=ctx.getImageData(0,0,w,h), d=id.data;
+  // simple open (erode then dilate) on binary image
+  try {
+    const w=c.width, h=c.height;
+    const ctx = c.getContext('2d');
+    const id = ctx.getImageData(0,0,w,h);
+    const d = id.data;
     const src = new Uint8Array(w*h);
-    for(let i=0,j=0;i<d.length;i+=4,j++) src[j]=d[i] > 128 ? 1 : 0;
+    for (let i=0,j=0;i<d.length;i+=4,j++) src[j] = d[i] > 128 ? 1 : 0;
     // erosion
-    for(let it=0; it<iterations; it++){
+    for (let it=0; it<iterations; it++){
       const tmp = src.slice();
-      for(let y=1;y<h-1;y++){
-        for(let x=1;x<w-1;x++){
+      for (let y=1;y<h-1;y++){
+        for (let x=1;x<w-1;x++){
           let anyZero=false;
-          for(let yy=-1;yy<=1;yy++){
-            for(let xx=-1;xx<=1;xx++){
-              if (src[(y+yy)*w + (x+xx)] === 0) { anyZero=true; break; }
-            } if (anyZero) break;
+          for (let yy=-1; yy<=1; yy++){
+            for (let xx=-1; xx<=1; xx++){
+              if (src[(y+yy)*w + (x+xx)] === 0){ anyZero=true; break; }
+            }
+            if (anyZero) break;
           }
-          tmp[y*w + x] = anyZero ? 0 : 1;
+          tmp[y*w+x] = anyZero ? 0 : 1;
         }
       }
       src.set(tmp);
     }
     // dilation
-    for(let it=0; it<iterations; it++){
+    for (let it=0; it<iterations; it++){
       const tmp = src.slice();
-      for(let y=1;y<h-1;y++){
-        for(let x=1;x<w-1;x++){
+      for (let y=1;y<h-1;y++){
+        for (let x=1;x<w-1;x++){
           if (src[y*w+x] === 1){
-            for(let yy=-1;yy<=1;yy++){
-              for(let xx=-1;xx<=1;xx++){
+            for (let yy=-1; yy<=1; yy++){
+              for (let xx=-1; xx<=1; xx++){
                 tmp[(y+yy)*w + (x+xx)] = 1;
               }
             }
@@ -229,35 +258,35 @@ function morphologicalOpen(c, iterations=1){
       }
       src.set(tmp);
     }
-    // write back
-    for(let j=0,i=0;j<src.length;j++,i+=4){
-      const v = src[j] ? 255 : 0; d[i]=d[i+1]=d[i+2]=v;
+    for (let j=0,i=0;j<src.length;j++,i+=4){
+      const v = src[j] ? 255 : 0;
+      d[i]=d[i+1]=d[i+2]=v;
     }
     ctx.putImageData(id,0,0);
-  } catch(e){ log('morph error:'+e.message); }
+  } catch(e){ log('morph err:'+e.message); }
   return c;
 }
 
 function rotateCanvas(src, deg){
-  const r = deg * Math.PI/180; const w=src.width,h=src.height;
+  const r = deg * Math.PI/180;
+  const w = src.width, h = src.height;
   const sin = Math.abs(Math.sin(r)), cos = Math.abs(Math.cos(r));
   const nw = Math.ceil(w*cos + h*sin), nh = Math.ceil(w*sin + h*cos);
   const c = document.createElement('canvas'); c.width = nw; c.height = nh;
-  const ctx = c.getContext('2d'); ctx.fillStyle='white'; ctx.fillRect(0,0,nw,nh);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'white'; ctx.fillRect(0,0,nw,nh);
   ctx.translate(nw/2, nh/2); ctx.rotate(r); ctx.drawImage(src, -w/2, -h/2);
   return c;
 }
-
 function canvasToDataUrl(c){ return c.toDataURL('image/png'); }
 
-/* ========= recognize wrapper (Tesseract) ========= */
-function recognizeWithTimeout(dataUrl, lang='kan+eng', timeout=OCR_TIMEOUT){
+/* ========= Tesseract wrapper ========= */
+function recognizeWithTimeout(dataUrl, lang='kan', timeout=OCR_TIMEOUT){
   return new Promise(async (resolve, reject) => {
     let timed=false;
-    const timer=setTimeout(()=>{ timed=true; reject(new Error('OCR timeout')); }, timeout);
+    const timer = setTimeout(()=>{ timed=true; reject(new Error('OCR timeout')); }, timeout);
     try {
-      // set user DPI to 300 for better results
-      Tesseract.setLogging(false);
+      // logger suppressed for cleaner UI; change if you want verbose logs
       const opts = {
         logger: m => { /* silent */ },
         tessedit_pageseg_mode: 6, // assume a block of text
@@ -271,36 +300,30 @@ function recognizeWithTimeout(dataUrl, lang='kan+eng', timeout=OCR_TIMEOUT){
   });
 }
 
-/* ========= helper to call PaddleOCR server if provided =========
-   Paddle endpoint should accept POST and return JSON { text: "..." } 
-   or { lines: [...] } - code tries common formats.
-=============================================== */
+/* ========= PaddleOCR client (optional) ========= */
 async function callPaddleOcrServer(dataUrl, endpoint){
-  try{
-    // try JSON body with dataUrl
+  try {
+    // first try JSON body with image dataUrl
     let res = await fetch(endpoint, {
       method:'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ image: dataUrl })
     });
     if (!res.ok){
-      // try multipart fallback
-      const form = new FormData();
-      // convert dataUrl -> blob
+      // fallback multipart form
       const blob = await (await fetch(dataUrl)).blob();
+      const form = new FormData();
       form.append('image', blob, 'image.png');
       res = await fetch(endpoint, { method:'POST', body: form });
     }
     if (!res.ok) throw new Error('HTTP '+res.status);
     const j = await res.json();
-    // try to extract text
     if (j.text) return j.text;
-    if (j.lines && Array.isArray(j.lines)) return j.lines.map(l=>l.text || l).join('\n');
+    if (j.lines && Array.isArray(j.lines)) return j.lines.map(l=>l.text||l).join('\n');
     if (j.data && j.data.text) return j.data.text;
-    // else stringify entire JSON to help debugging
     return JSON.stringify(j);
   } catch(e){
-    log('PaddleOCR server call failed: '+e.message);
+    log('PaddleOCR call failed: '+e.message);
     return null;
   }
 }
@@ -316,7 +339,7 @@ function chunkText(text, maxLen=CHUNK_SIZE){
       if (remaining.length <= maxLen){ chunks.push(remaining); break; }
       const sub = remaining.slice(0, maxLen);
       let splitPos = Math.max(sub.lastIndexOf('.'), sub.lastIndexOf('।'), sub.lastIndexOf('?'), sub.lastIndexOf('!'), sub.lastIndexOf('\n'));
-      if (splitPos > Math.floor(maxLen*0.6)) {
+      if (splitPos > Math.floor(maxLen*0.6)){
         chunks.push(remaining.slice(0, splitPos+1).trim());
         remaining = remaining.slice(splitPos+1).trim();
       } else {
@@ -327,13 +350,13 @@ function chunkText(text, maxLen=CHUNK_SIZE){
       }
     }
   }
-  if (chunks.length === 0 && text.trim()) chunks.push(text.trim().slice(0, maxLen));
+  if (chunks.length === 0 && text.trim()) chunks.push(text.trim().slice(0,maxLen));
   return chunks;
 }
 
 function fetchWithTimeout(url, opts={}, ms=8000){
   return new Promise((resolve,reject)=>{
-    const timer=setTimeout(()=>reject(new Error('timeout')), ms);
+    const timer = setTimeout(()=>reject(new Error('timeout')), ms);
     fetch(url, opts).then(res=>{ clearTimeout(timer); resolve(res); }).catch(err=>{ clearTimeout(timer); reject(err); });
   });
 }
@@ -367,7 +390,7 @@ async function translateChunkWithEp(chunk, ep){
 }
 
 async function doTranslationChunks(fullText){
-  try{
+  try {
     showTrans('Translating…'); log('Preparing chunks for translation...');
     const chunks = chunkText(fullText, CHUNK_SIZE);
     log(`Chunks: ${chunks.length}`);
@@ -380,10 +403,7 @@ async function doTranslationChunks(fullText){
         const res = await translateChunkWithEp(chunk, ep);
         if (res.ok){ translated = res.text; log(`Chunk ${i+1} translated by ${res.source}`); break; }
       }
-      if (!translated){
-        translated = '[Translation unavailable for this chunk]';
-        log(`Chunk ${i+1} failed on all endpoints.`);
-      }
+      if (!translated){ translated = '[Translation unavailable for this chunk]'; log(`Chunk ${i+1} failed on all endpoints.`); }
       results.push(translated);
       await new Promise(r=>setTimeout(r, 200));
     }
@@ -397,8 +417,9 @@ async function doTranslationChunks(fullText){
   }
 }
 
-/* ========= MAIN pipeline ========= */
-fileInput.addEventListener('change', e => {
+/* ========= Main pipeline ========= */
+
+fileInput.addEventListener('change', e=>{
   const f = e.target.files && e.target.files[0];
   if (f){ lastFile = f; preview.src = URL.createObjectURL(f); preview.style.display='block'; runPipeline(f); }
 });
@@ -410,112 +431,124 @@ copyOcr.addEventListener('click', ()=> copyText(lastCombinedText));
 downloadTrans.addEventListener('click', ()=> downloadText('translation.txt', lastTranslation));
 
 async function runPipeline(file){
-  try{
+  try {
     log('Starting pipeline for file: ' + file.name);
     showOcr('(processing...)'); showTrans('(waiting...)');
-    const img = new Image(); img.src = URL.createObjectURL(file); await img.decode();
 
-    // 1) base upscale and build variants
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    await img.decode();
+
+    // 1) base resize/upscale
     const base = resizeCanvas(img, MAX_DIM);
-    // create variants:
+
+    // build variants with different enhancements
     const variants = [];
-    // plain grayscale + contrast
+
+    // plain: grayscale + slight contrast
     const plain = document.createElement('canvas'); plain.width = base.width; plain.height = base.height;
     plain.getContext('2d').drawImage(base,0,0);
-    toGrayscale(plain); contrastBoost(plain,1.5);
-    variants.push({name:'plain', canvas:plain});
+    toGrayscale(plain); contrastBoost(plain,1.4);
+    variants.push({name:'plain', canvas: plain});
 
-    // otsu + morphological
-    const otsu = document.createElement('canvas'); otsu.width=base.width; otsu.height=base.height;
+    // blurred + contrast (reduces noise)
+    const blur = applyCanvasFilter(plain, 'blur(1px) contrast(120%)');
+    variants.push({name:'blur', canvas: blur});
+
+    // otsu threshold + open
+    const otsu = document.createElement('canvas'); otsu.width = base.width; otsu.height = base.height;
     otsu.getContext('2d').drawImage(base,0,0);
-    toGrayscale(otsu); contrastBoost(otsu,1.4); otsuThreshold(otsu); morphologicalOpen(otsu,1);
-    variants.push({name:'otsu_open', canvas:otsu});
+    toGrayscale(otsu); contrastBoost(otsu,1.3); otsuThreshold(otsu); morphologicalOpen(otsu,1);
+    variants.push({name:'otsu', canvas: otsu});
 
-    // extra sharpened variant
-    const sharp = document.createElement('canvas'); sharp.width = base.width; sharp.height = base.height;
-    const sctx = sharp.getContext('2d'); sctx.filter = 'contrast(140%) brightness(105%)';
-    sctx.drawImage(base,0,0);
-    variants.push({name:'sharp', canvas:sharp});
+    // extra sharpen
+    const sharp = applyCanvasFilter(base, 'contrast(140%) brightness(105%)');
+    variants.push({name:'sharp', canvas: sharp});
 
-    // 2) Run Tesseract on variants + rotations (kan+eng)
+    // 2) Try Kannada-only OCR across variants & rotations (so Kannada glyphs are preserved)
     let bestKan = {score:-1, text:'', details:null};
-    let bestEng = {score:-1, text:'', details:null};
     for (const v of variants){
       for (const rot of ROTATIONS){
-        const canvas = (rot===0) ? v.canvas : rotateCanvas(v.canvas, rot);
-        const url = canvasToDataUrl(canvas);
-        log(`Try Tesseract: variant=${v.name}, rot=${rot}°`);
+        const canvas = (rot === 0) ? v.canvas : rotateCanvas(v.canvas, rot);
+        const dataUrl = canvasToDataUrl(canvas);
+        log(`KAN try: variant=${v.name}, rot=${rot}°`);
         try {
-          const data = await recognizeWithTimeout(url, 'kan+eng', OCR_TIMEOUT);
+          const data = await recognizeWithTimeout(dataUrl, 'kan', OCR_TIMEOUT);
           const text = (data && data.text) ? data.text.trim() : '';
-          // evaluate Kannada count
           const kcount = (text.match(/[\u0C80-\u0CFF]/g) || []).length;
-          const englen = (text.replace(/[\u0C80-\u0CFF]/g,'').trim().length);
-          // scoring heuristic: favor many Kannada chars + length
-          const scoreKan = kcount * 4 + Math.min(1000, text.length);
-          const scoreEng = englen;
-          log(`Tess result len=${text.length}, kannada=${kcount} scoreKan=${scoreKan} scoreEng=${scoreEng}`);
-          if (scoreKan > bestKan.score){ bestKan = { score: scoreKan, text, details:{variant:v.name,rot} }; showOcr(bestKan.text); }
-          if (scoreEng > bestEng.score){ bestEng = { score: scoreEng, text, details:{variant:v.name,rot} }; }
-          // early accept if many Kannada chars
-          if (kcount >= Math.max(MIN_KANNADA_CHARS_FOR_CONFIDENCE, Math.floor(base.width*base.height/50000))) {
-            log('Tesseract early accept (enough Kannada chars)');
-            break;
-          }
+          const score = kcount*5 + text.replace(/\s+/g,'').length;
+          log(`KAN result len=${text.length}, kannada=${kcount}, score=${score}`);
+          if (score > bestKan.score){ bestKan = {score, text, details:{variant:v.name,rot}}; showOcr(bestKan.text); }
+          if (kcount >= Math.max(MIN_KANNADA_CONF, Math.floor((canvas.width*canvas.height) / 50000))){ log('KAN early accept'); break; }
         } catch(err){
-          log(`Tesseract failed variant=${v.name}, rot=${rot}: ${err.message}`);
+          log(`KAN failed variant=${v.name}, rot=${rot}: ${err.message}`);
         }
       }
-      // quick break heuristic
       if (bestKan.score > 4000) break;
     }
 
-    // combine and pick English-only parts: we will keep bestKan text and supplement with English from bestEng
-    const kanText = bestKan.text || '';
-    // extract English segments from bestEng (filter out Kannada parts)
-    let engText = '';
-    if (bestEng.text){
-      // remove heavy Kannada chunks
-      engText = bestEng.text.replace(/[\u0C80-\u0CFF]+/g, '').trim();
+    // 3) English-only OCR on the best-looking plain/sharp variant
+    let bestEng = {score:-1, text:'', details:null};
+    const engCandidates = [variants.find(v=>v.name==='plain') || variants[0], variants.find(v=>v.name==='sharp') || variants[0]];
+    for (const v of engCandidates){
+      for (const rot of ROTATIONS){
+        const canvas = (rot===0) ? v.canvas : rotateCanvas(v.canvas, rot);
+        const dataUrl = canvasToDataUrl(canvas);
+        log(`ENG try: variant=${v.name}, rot=${rot}°`);
+        try {
+          const data = await recognizeWithTimeout(dataUrl, 'eng', OCR_TIMEOUT);
+          const text = (data && data.text) ? data.text.trim() : '';
+          const score = text.replace(/\s+/g,'').length;
+          log(`ENG result len=${text.length}, score=${score}`);
+          if (score > bestEng.score){ bestEng = {score, text, details:{variant:v.name, rot}}; }
+          if (score > 40) break;
+        } catch(err){
+          log(`ENG failed variant=${v.name}, rot=${rot}: ${err.message}`);
+        }
+      }
     }
-    // final combined
-    const combined = ((kanText + "\n" + engText).trim()).replace(/\r/g,'');
+
+    // combine: Kannada first (unaltered), then English-only segments extracted from bestEng
+    const kanText = bestKan.text || '';
+    let engText = bestEng.text || '';
+    // remove any Kannada glyphs from english text
+    engText = engText.replace(/[\u0C80-\u0CFF]+/g, '').trim();
+    const combined = ((kanText + "\n\n" + engText).trim()).replace(/\r/g,'');
     lastCombinedText = combined;
     showOcr(combined || '(no OCR result)');
     log(`Selected KAN variant=${bestKan.details?.variant||'n/a'} rot=${bestKan.details?.rot||0} score=${bestKan.score}`);
     log(`Selected ENG variant=${bestEng.details?.variant||'n/a'} rot=${bestEng.details?.rot||0} score=${bestEng.score}`);
 
-    // If combined looks poor, call PaddleOCR if endpoint provided
+    // if combined looks poor, optionally call PaddleOCR endpoint (if provided)
     const kcountTotal = (combined.match(/[\u0C80-\u0CFF]/g) || []).length;
     const combinedLen = (combined || '').replace(/\s/g,'').length;
-    const paddleEndpoint = (document.getElementById('paddleEndpoint').value || '').trim();
+    const paddleEndpoint = (paddleEndpointEl.value || '').trim();
 
-    if ((kcountTotal < MIN_KANNADA_CHARS_FOR_CONFIDENCE && combinedLen < 40) && paddleEndpoint){
-      log('Tesseract result low quality — trying PaddleOCR endpoint fallback');
-      // use original base image (not rotated) as data URL
+    if ((kcountTotal < MIN_KANNADA_CONF && combinedLen < 50) && paddleEndpoint){
+      log('OCR quality low — trying PaddleOCR fallback');
       const baseUrl = canvasToDataUrl(base);
       const paddleText = await callPaddleOcrServer(baseUrl, paddleEndpoint);
       if (paddleText){
-        log('PaddleOCR server returned text (using as combined)');
+        log('PaddleOCR returned text — using it.');
         lastCombinedText = paddleText;
         showOcr(paddleText);
       } else {
-        log('PaddleOCR server returned no useful text');
+        log('PaddleOCR fallback failed.');
       }
-    } else if ((kcountTotal < MIN_KANNADA_CHARS_FOR_CONFIDENCE && combinedLen < 40) && !paddleEndpoint){
-      log('Tesseract low-quality and no Paddle endpoint configured. Provide a PaddleOCR server URL or retry with better photo.');
+    } else if ((kcountTotal < MIN_KANNADA_CONF && combinedLen < 50) && !paddleEndpoint){
+      log('OCR poor and no Paddle endpoint configured. Provide Paddle endpoint or retry with clearer image.');
       showTrans('No translation: OCR poor and no Paddle fallback.');
       return;
     }
 
-    // check again
+    // final sanity
     if (!lastCombinedText || lastCombinedText.trim().length < 6){
-      log('No useful OCR recovered. Try a clearer photo (closer, well-lit, flat).');
+      log('No useful OCR recovered. Try clearer photo (closer, flat, straight).');
       showTrans('No translation: no useful OCR text.');
       return;
     }
 
-    // proceed to translation
+    // translation stage
     await doTranslationChunks(lastCombinedText);
 
   } catch(err){
