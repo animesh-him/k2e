@@ -120,8 +120,6 @@ small, .small { font-size:13px; color:#444; }
 
 <!-- LIBS -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
-
 
 <script>
 let lastDataURL = null;
@@ -147,7 +145,7 @@ function preprocess(img){
     ctx.filter="contrast(150%) brightness(115%) grayscale(100%)";
     ctx.drawImage(c,0,0);
 
-    // Sharpen kernel
+    // Sharpen
     const imgData=ctx.getImageData(0,0,w,h);
     const d=imgData.data;
     for(let i=0;i<d.length;i+=4){
@@ -164,17 +162,50 @@ function preprocess(img){
 
 async function runOCR(dataURL){
   log("Running Tesseract...");
-  const r=await Tesseract.recognize(dataURL,"kan+eng",{logger:m=>{}});
+  const r=await Tesseract.recognize(dataURL,"kan+eng");
   return r.data.text;
 }
 
-async function translate(text){
-  log("Translating...");
-  const api="https://api.mymemory.translated.net/get?q="+encodeURIComponent(text)+"&langpair=kn|en";
-  const r=await fetch(api);
+
+// ---- FIXED TRANSLATION HERE ----
+function splitChunks(txt){
+  const out=[];
+  let temp="";
+  const maxLen=400;
+
+  const parts=txt.split(/\n|\.|\?|!/);
+
+  for(const p of parts){
+    if((temp+p).length>maxLen){
+      out.push(temp);
+      temp=p;
+    } else temp+=" "+p;
+  }
+  if(temp.trim().length) out.push(temp);
+  return out;
+}
+
+async function translateChunk(chunk){
+  const url=`https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=kn|en`;
+  const r=await fetch(url);
   const j=await r.json();
   return j.responseData.translatedText;
 }
+
+async function translateFull(text){
+  const chunks=splitChunks(text);
+  log("Chunks: "+chunks.length);
+
+  let final="";
+
+  for(let i=0;i<chunks.length;i++){
+    const t=await translateChunk(chunks[i]);
+    final+=t+"\n";
+  }
+  return final;
+}
+// ---- END FIX ----
+
 
 async function startPipeline(){
   if(!lastDataURL){alert("Upload image first");return;}
@@ -188,7 +219,7 @@ async function startPipeline(){
   document.getElementById("ocrBox").textContent=ocr;
   log("OCR done.");
 
-  const t=await translate(ocr);
+  const t=await translateFull(ocr);
   lastTrans=t;
   document.getElementById("transBox").textContent=t;
   log("Translation done.");
