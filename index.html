@@ -70,10 +70,10 @@ function preprocess(img){
     const c=document.createElement("canvas");
     const ctx=c.getContext("2d");
 
-    // scale with correct interpolation
     const w=img.width*2;
     const h=img.height*2;
     c.width=w;c.height=h;
+
     ctx.imageSmoothingEnabled=true;
     ctx.imageSmoothingQuality="high";
     ctx.drawImage(img,0,0,w,h);
@@ -86,17 +86,13 @@ function preprocess(img){
 async function runOCR(){
   log("Running Tesseract…");
 
-  const cfg={
-    tessedit_do_invert:"0",
-    preserve_interword_spaces:"1",
-    user_defined_dpi:"300"
-  };
-
   const r=await Tesseract.recognize(
     dataURL,
     "kan+eng",
     {
-      psm:6,  // BEST for Kannada docs
+      tessedit_pageseg_mode:6,
+      preserve_interword_spaces:"1",
+      user_defined_dpi:"300",
       logger:m=>{}
     }
   );
@@ -104,11 +100,35 @@ async function runOCR(){
   return r.data.text;
 }
 
+// TRANSLATION FIX WITH CHUNKING
 async function translate(text){
-  const api="https://api.mymemory.translated.net/get?q="
-    +encodeURIComponent(text)+"&langpair=kn|en";
-  const j=await fetch(api).then(r=>r.json());
-  return j.responseData.translatedText;
+  const max = 500;
+  const parts = [];
+
+  while(text.length>0){
+    let chunk = text.slice(0,max);
+
+    const lastSpace = chunk.lastIndexOf(" ");
+    if(lastSpace!==-1 && text.length>max){
+      chunk = chunk.slice(0,lastSpace);
+    }
+
+    parts.push(chunk);
+    text=text.slice(chunk.length);
+  }
+
+  let translated="";
+
+  for(const p of parts){
+    const api =
+      "https://api.mymemory.translated.net/get?q="
+      + encodeURIComponent(p) + "&langpair=kn|en";
+
+    const j = await fetch(api).then(r=>r.json());
+    translated += j.responseData.translatedText + "\n";
+  }
+
+  return translated.trim();
 }
 
 async function start(){
