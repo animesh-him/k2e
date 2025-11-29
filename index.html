@@ -3,15 +3,17 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Robust Pipeline OCR (B) — Kannada + English → Translation</title>
+<title>Robust Pipeline OCR (Kannada+English) → English Translation</title>
 
-<!-- Tesseract.js (CDN) -->
+<!-- Tesseract.js v5 -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <style>
-  :root{ --bg:#071021; --card:#0f1720; --muted:#9fb0c8; --accent1:#ff6b81; --accent2:#8a2be2; --text:#e6eef7; }
+  :root{
+    --bg:#071021; --card:#0f1720; --muted:#9fb0c8; --accent1:#ff6b81; --accent2:#8a2be2; --text:#e6eef7;
+  }
   body{ margin:0; font-family:Inter,Arial,Helvetica,sans-serif; background:linear-gradient(180deg,#03040a,#071021); color:var(--text); }
-  .wrap{max-width:980px;margin:16px auto;padding:16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03)}
+  .wrap{max-width:980px;margin:20px auto;padding:18px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03)}
   h1{margin:0;font-size:20px}
   .lead{color:var(--muted);font-size:13px;margin-top:6px}
   .grid{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap}
@@ -19,7 +21,7 @@
   .card{padding:12px;border-radius:10px;background:var(--card);border:1px solid rgba(255,255,255,0.02)}
   input[type=file]{width:100%}
   .preview{width:100%;max-height:320px;object-fit:contain;border-radius:8px;background:#fff;margin-top:8px;display:none}
-  .box{width:100%;min-height:120px;border-radius:8px;padding:10px;background:#071018;color:var(--text);font-family:monospace;white-space:pre-wrap;overflow:auto}
+  .box{width:100%;min-height:140px;border-radius:8px;padding:10px;background:#071018;color:var(--text);font-family:monospace;white-space:pre-wrap;overflow:auto}
   .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   button{padding:10px 12px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent1),var(--accent2));color:white;cursor:pointer}
   .secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text)}
@@ -33,8 +35,8 @@
   <div class="wrap">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div>
-        <h1>Pipeline OCR (B) — Kannada + English → English Translation</h1>
-        <div class="lead">Preprocessing + rotations + separate Kannada/English OCR → chunked translation with fallbacks</div>
+        <h1>Pipeline OCR — Kannada + English → English Translation</h1>
+        <div class="lead">High-accuracy mode: multiple preprocessing passes, rotations, chunked translation with fallbacks.</div>
       </div>
     </div>
 
@@ -76,15 +78,19 @@
 <script>
 /* ================= CONFIG ================= */
 const ROTATIONS = [-2,0,2];        // degrees to try for small skew
-const MAX_DIM = 1400;              // max resize to speed up
-const CHUNK_SIZE = 400;            // translation chunk size (~safe <500)
-const OCR_TIMEOUT = 20000;         // ms per recognition attempt
-const TRANSLATION_TIMEOUT = 9000;  // ms per translator request
+const MAX_DIM = 1600;              // max resize to speed up
+const CHUNK_SIZE = 400;            // translation chunk size (safe <500)
+const OCR_TIMEOUT = 25000;         // ms per recognition attempt
+const TRANSLATION_TIMEOUT = 12000; // ms per translator request
 
 const TRANSLATORS = [
+  // MyMemory (GET) - sometimes gives decent results for short chunks
   { name:'MyMemory', type:'get', build: t => `https://api.mymemory.translated.net/get?q=${encodeURIComponent(t)}&langpair=kn|en` },
+  // libretranslate.de (POST)
   { name:'libretranslate.de', type:'post', url:'https://libretranslate.de/translate' },
+  // argosopentech
   { name:'argosopentech', type:'post', url:'https://translate.argosopentech.com/translate' },
+  // astian (last fallback)
   { name:'astian', type:'post', url:'https://translate.astian.org/translate' }
 ];
 
@@ -123,58 +129,117 @@ function resizeCanvas(img, maxDim=MAX_DIM){
   const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,c.width,c.height); return c;
 }
 
+function toGrayscale(c){
+  const ctx=c.getContext('2d'); const id=ctx.getImageData(0,0,c.width,c.height), d=id.data;
+  for(let i=0;i<d.length;i+=4){
+    const v = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
+    d[i]=d[i+1]=d[i+2]=v;
+  }
+  ctx.putImageData(id,0,0);
+  return c;
+}
+
 function contrastStretch(c){
   try {
     const ctx=c.getContext('2d'); const id=ctx.getImageData(0,0,c.width,c.height); const d=id.data;
     let min=255,max=0;
-    for(let i=0;i<d.length;i+=4){ const lum=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; if(lum<min)min=lum; if(lum>max)max=lum; }
+    for(let i=0;i<d.length;i+=4){ const lum=d[i]; if(lum<min)min=lum; if(lum>max)max=lum; }
     const range=Math.max(1,max-min);
-    for(let i=0;i<d.length;i+=4){ const lum=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; const v=Math.round((lum-min)*255/range); d[i]=d[i+1]=d[i+2]=v; }
+    for(let i=0;i<d.length;i+=4){ const v=Math.round((d[i]-min)*255/range); d[i]=d[i+1]=d[i+2]=v; }
     ctx.putImageData(id,0,0);
   } catch(e){ log('contrast error: '+e.message); }
   return c;
 }
 
-function sharpen(c){
+function simpleBlur(c, radius=1){
+  // approximate box blur by canvas filter if available
   try {
     const ctx=c.getContext('2d');
-    const clone=document.createElement('canvas'); clone.width=c.width; clone.height=c.height;
-    const cctx=clone.getContext('2d');
-    if(cctx.filter!==undefined){
-      cctx.filter='blur(1px)'; cctx.drawImage(c,0,0);
-      const idb=cctx.getImageData(0,0,c.width,c.height); const id=ctx.getImageData(0,0,c.width,c.height);
-      const db=idb.data, da=id.data;
-      for(let i=0;i<da.length;i+=4){ let v=da[i]+0.6*(da[i]-db[i]); v=Math.max(0,Math.min(255,Math.round(v))); da[i]=da[i+1]=da[i+2]=v; }
-      ctx.putImageData(id,0,0);
-    } else { contrastStretch(c); }
-  } catch(e){ log('sharpen error: '+e.message); }
+    if ('filter' in ctx){
+      const tmp=document.createElement('canvas'); tmp.width=c.width; tmp.height=c.height;
+      const tctx=tmp.getContext('2d'); tctx.filter=`blur(${radius}px)`; tctx.drawImage(c,0,0);
+      return tmp;
+    }
+    return c;
+  } catch(e){ return c; }
+}
+
+// Otsu threshold
+function otsuThreshold(c){
+  try {
+    const ctx=c.getContext('2d'); const w=c.width,h=c.height; const id=ctx.getImageData(0,0,w,h); const d=id.data;
+    const hist = new Array(256).fill(0);
+    for(let i=0;i<d.length;i+=4) hist[d[i]]++;
+    const total = w*h;
+    let sum = 0;
+    for(let t=0;t<256;t++) sum += t * hist[t];
+    let sumB = 0, wB = 0, wF = 0, varMax = 0, threshold = 0;
+    for(let t=0;t<256;t++){
+      wB += hist[t];
+      if (wB === 0) continue;
+      wF = total - wB;
+      if (wF === 0) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+      const varBetween = wB * wF * (mB - mF) * (mB - mF);
+      if (varBetween > varMax) { varMax = varBetween; threshold = t; }
+    }
+    for(let i=0;i<d.length;i+=4){
+      const v = d[i] > threshold ? 255 : 0;
+      d[i]=d[i+1]=d[i+2]=v;
+    }
+    ctx.putImageData(id,0,0);
+  } catch(e){ log('otsu error: '+e.message); }
   return c;
 }
 
-// Sauvola-like adaptive threshold (heavy, but useful)
-function sauvola(c){
+// Morphological operations (binary canvas): erosion then dilation (open)
+function morphologicalOpen(c, iterations=1){
   try {
-    const ctx=c.getContext('2d'); const w=c.width,h=c.height; const id=ctx.getImageData(0,0,w,h), d=id.data;
-    const I=new Uint8ClampedArray(w*h); for(let i=0,j=0;i<d.length;i+=4,j++){ I[j]=Math.round(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]); }
-    const ws=15, half=Math.floor(ws/2);
-    const out=new Uint8ClampedArray(w*h);
-    for(let y=0;y<h;y++){
-      for(let x=0;x<w;x++){
-        let sum=0,sum2=0,cnt=0;
-        for(let yy=Math.max(0,y-half);yy<=Math.min(h-1,y+half);yy++){
-          for(let xx=Math.max(0,x-half);xx<=Math.min(w-1,x+half);xx++){
-            const v=I[yy*w+xx]; sum+=v; sum2+=v*v; cnt++;
+    const w=c.width,h=c.height; const ctx=c.getContext('2d'); const id=ctx.getImageData(0,0,w,h); const d=id.data;
+    const src = new Uint8ClampedArray(w*h);
+    for(let i=0, j=0;i<d.length;i+=4,j++) src[j]=d[i] < 128 ? 0 : 1; // 1 = white
+    // erosion
+    for(let it=0; it<iterations; it++){
+      const tmp = src.slice();
+      for(let y=1;y<h-1;y++){
+        for(let x=1;x<w-1;x++){
+          let anyZero=false;
+          for(let yy=-1;yy<=1;yy++){
+            for(let xx=-1;xx<=1;xx++){
+              if (src[(y+yy)*w + (x+xx)] === 0) { anyZero=true; break; }
+            }
+            if (anyZero) break;
+          }
+          tmp[y*w+x] = anyZero ? 0 : 1;
+        }
+      }
+      src.set(tmp);
+    }
+    // dilation
+    for(let it=0; it<iterations; it++){
+      const tmp = src.slice();
+      for(let y=1;y<h-1;y++){
+        for(let x=1;x<w-1;x++){
+          if (src[y*w+x] === 1) {
+            for(let yy=-1;yy<=1;yy++){
+              for(let xx=-1;xx<=1;xx++){
+                tmp[(y+yy)*w + (x+xx)] = 1;
+              }
+            }
           }
         }
-        const mean=sum/cnt; const varr=(sum2/cnt)-(mean*mean); const std=Math.sqrt(Math.max(0,varr));
-        const R=128, k=0.34;
-        const thresh = mean*(1 + k*((std/R)-1));
-        out[y*w+x] = I[y*w+x] > thresh ? 255 : 0;
       }
+      src.set(tmp);
     }
-    for(let j=0,idx=0;j<d.length;j+=4,idx++){ const v=out[idx]; d[j]=d[j+1]=d[j+2]=v; }
+    // write back
+    for(let j=0,i=0;j<src.length;j++,i+=4){
+      const v = src[j] ? 255 : 0;
+      d[i]=d[i+1]=d[i+2]=v;
+    }
     ctx.putImageData(id,0,0);
-  } catch(e){ log('sauvola error: '+e.message); }
+  } catch(e){ log('morph error: '+e.message); }
   return c;
 }
 
@@ -190,13 +255,13 @@ function rotateCanvas(src, deg){
 
 function canvasToDataUrl(c){ return c.toDataURL('image/png'); }
 
-/* ================= Simple safe recognize wrapper (uses Tesseract.recognize) ================= */
+/* ================= Safe recognize wrapper ================= */
 function recognizeWithTimeout(dataUrl, lang, timeout=OCR_TIMEOUT){
   return new Promise(async (resolve, reject) => {
     let timed=false;
     const timer=setTimeout(()=>{ timed=true; reject(new Error('OCR timeout')); }, timeout);
     try {
-      const res = await Tesseract.recognize(dataUrl, lang, { logger: m => {/*silent*/} });
+      const res = await Tesseract.recognize(dataUrl, lang, { logger: m => { /*silent*/ } });
       if (!timed){ clearTimeout(timer); resolve(res.data); }
     } catch(err){
       if (!timed){ clearTimeout(timer); reject(err); }
@@ -226,20 +291,32 @@ async function runPipeline(file){
 
     // build preprocessing variants
     const variants = [];
-    // plain
-    const plain = document.createElement('canvas'); plain.width=base.width; plain.height=base.height; plain.getContext('2d').drawImage(base,0,0);
+    // plain (grayscale + contrast)
+    const plain = document.createElement('canvas'); plain.width=base.width; plain.height=base.height;
+    plain.getContext('2d').drawImage(base,0,0);
+    toGrayscale(plain); contrastStretch(plain);
     variants.push({name:'plain', canvas:plain});
-    // contrast + sharpen
-    const cs = document.createElement('canvas'); cs.width=base.width; cs.height=base.height; cs.getContext('2d').drawImage(base,0,0);
-    contrastStretch(cs); sharpen(cs); variants.push({name:'contrast_sharp', canvas:cs});
-    // contrast + sauvola
-    const sa = document.createElement('canvas'); sa.width=base.width; sa.height=base.height; sa.getContext('2d').drawImage(base,0,0);
-    contrastStretch(sa); sauvola(sa); variants.push({name:'contrast_sauvola', canvas:sa});
+
+    // contrast + sharpen (approx via blur and contrast)
+    const cs = document.createElement('canvas'); cs.width=base.width; cs.height=base.height;
+    cs.getContext('2d').drawImage(base,0,0);
+    toGrayscale(cs); contrastStretch(cs);
+    const csBlur = simpleBlur(cs,1);
+    variants.push({name:'contrast_sharp', canvas:csBlur});
+
+    // Otsu threshold + morphological open
+    const sa = document.createElement('canvas'); sa.width=base.width; sa.height=base.height;
+    sa.getContext('2d').drawImage(base,0,0);
+    toGrayscale(sa); contrastStretch(sa); otsuThreshold(sa); morphologicalOpen(sa,1);
+    variants.push({name:'otsu_open', canvas:sa});
 
     // Try Kannada OCR across variants and rotations
     let bestKan = {score:-1, text:'', details:null};
-    for (const rot of ROTATIONS){
-      for (const v of variants){
+    let kanEarly = false;
+    for (let vi=0; vi<variants.length && !kanEarly; vi++){
+      const v = variants[vi];
+      for (let ri=0; ri<ROTATIONS.length; ri++){
+        const rot = ROTATIONS[ri];
         const canvas = (rot===0) ? v.canvas : rotateCanvas(v.canvas, rot);
         const url = canvasToDataUrl(canvas);
         log(`KAN try: variant=${v.name}, rot=${rot}°`);
@@ -247,19 +324,21 @@ async function runPipeline(file){
           const data = await recognizeWithTimeout(url, 'kan');
           const text = (data && data.text) ? data.text.trim() : '';
           const kcount = (text.match(/[\u0C80-\u0CFF]/g) || []).length;
-          const score = kcount*3 + text.replace(/\s+/g,'').length;
+          const score = kcount*4 + text.replace(/\s+/g,'').length;
           log(`KAN result len=${text.length}, kannada=${kcount}, score=${score}`);
           if (score > bestKan.score){ bestKan = {score, text, details:{variant:v.name, rot}}; showOcr(bestKan.text); }
-          if (kcount >= 20){ log('KAN early accept'); rot=999; break; }
+          // early accept heuristic: lots of Kannada characters
+          if (kcount >= 80){ log('KAN early accept'); kanEarly = true; break; }
         } catch(err){
           log(`KAN failed variant=${v.name}, rot=${rot}: ${err.message}`);
         }
       }
     }
 
-    // English OCR (use plain+small rotations)
+    // English OCR (use plain + small rotations)
     let bestEng = {score:-1, text:'', details:null};
-    for (const rot of ROTATIONS){
+    for (let ri=0; ri<ROTATIONS.length; ri++){
+      const rot = ROTATIONS[ri];
       const canvas = (rot===0) ? plain : rotateCanvas(plain, rot);
       const url = canvasToDataUrl(canvas);
       log(`ENG try: rot=${rot}°`);
@@ -269,7 +348,7 @@ async function runPipeline(file){
         const score = text.replace(/\s+/g,'').length;
         log(`ENG result len=${text.length}, score=${score}`);
         if (score > bestEng.score){ bestEng = {score, text, details:{rot}}; }
-        if (score > 30) break;
+        if (score > 40) break;
       } catch(err){
         log(`ENG failed rot=${rot}: ${err.message}`);
       }
@@ -277,7 +356,7 @@ async function runPipeline(file){
 
     const kanText = bestKan.text || '';
     const engText = bestEng.text || '';
-    const combined = (kanText + "\n" + engText).trim();
+    const combined = ((kanText + "\n" + engText).trim()).replace(/\r/g,'');
     lastCombinedText = combined;
     showOcr(combined || '(no OCR result)');
     log(`Selected KAN variant=${bestKan.details?.variant||'n/a'} rot=${bestKan.details?.rot||0} score=${bestKan.score}`);
@@ -309,7 +388,6 @@ function chunkText(text, maxLen=CHUNK_SIZE){
     let remaining = p.trim();
     while (remaining.length > 0){
       if (remaining.length <= maxLen){ chunks.push(remaining); break; }
-      // split at last punctuation / newline or whitespace
       const sub = remaining.slice(0, maxLen);
       let splitPos = Math.max(sub.lastIndexOf('.'), sub.lastIndexOf('।'), sub.lastIndexOf('?'), sub.lastIndexOf('!'), sub.lastIndexOf('\n'));
       if (splitPos > Math.floor(maxLen*0.6)) {
@@ -345,7 +423,7 @@ async function translateChunkWithEp(chunk, ep){
       }, TRANSLATION_TIMEOUT);
       if (!res.ok) throw new Error('HTTP '+res.status);
       const j = await res.json();
-      const t = j.translatedText || j.translation || j.result || (j[0] && j[0].map? j[0].map(x=>x[0]).join('') : null);
+      const t = j.translatedText || j.translation || j.result || (j[0] && j[0].map? j[0].map(x=>x[0]).join('') : null) || (j.data && j.data.translations && j.data.translations[0] && j.data.translations[0].translatedText);
       if (t && t.trim()) return {ok:true, text:t, source:ep.name};
       return {ok:false};
     }
@@ -365,6 +443,7 @@ async function doTranslationChunks(fullText){
       const chunk = chunks[i];
       log(`Translating chunk ${i+1}/${chunks.length} (len=${chunk.length})`);
       let translated = null;
+      // try each translator in order; stop when one returns text
       for (const ep of TRANSLATORS){
         const res = await translateChunkWithEp(chunk, ep);
         if (res.ok){ translated = res.text; log(`Chunk ${i+1} translated by ${res.source}`); break; }
@@ -374,8 +453,8 @@ async function doTranslationChunks(fullText){
         log(`Chunk ${i+1} failed on all endpoints.`);
       }
       results.push(translated);
-      // polite delay
-      await new Promise(r=>setTimeout(r, 200));
+      // small polite delay
+      await new Promise(r=>setTimeout(r, 250));
     }
     const final = results.join('\n\n');
     lastTranslation = final;
