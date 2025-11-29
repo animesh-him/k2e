@@ -3,246 +3,141 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hybrid OCR — Kannada+English → Translation</title>
+<title>Hybrid OCR — Kannada + English</title>
 <style>
-body {
-  font-family: Arial, sans-serif;
-  padding: 12px;
-  background:#f2f2f2;
-}
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.card {
-  background:white;
-  padding:12px;
-  border-radius:6px;
-  box-shadow:0 0 4px rgba(0,0,0,.15);
-}
-.box {
-  border:1px solid #ddd;
-  padding:12px;
-  height:260px;
-  overflow:auto;
-  white-space:pre-wrap;
-  background:white;
-}
-.log {
-  border:1px dashed #999;
-  background:#fff;
-  padding:10px;
-  font-size:13px;
-  height:160px;
-  overflow:auto;
-  white-space:pre-wrap;
-}
-.preview {
-  width:100%;
-  margin-top:12px;
-  border-radius:4px;
-}
-small, .small { font-size:13px; color:#444; }
-.controls button {
-  margin:4px 4px 4px 0;
-  padding:6px 12px;
-}
-.text { width:100%; padding:6px; margin:4px 0; }
-.secondary {
-  background:#eee;
-  border:1px solid #aaa;
-}
-.credits {
-  margin-top:20px;
-  font-size:13px;
-  color:#444;
-  opacity:.7;
-  text-align:right;
-}
+body{font-family:Arial;padding:12px;background:#f2f2f2;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.card{background:white;padding:12px;border-radius:6px;box-shadow:0 0 4px rgba(0,0,0,.15);}
+.box{border:1px solid #ddd;padding:12px;height:260px;overflow:auto;white-space:pre-wrap;background:white;}
+.log{border:1px dashed #999;background:#fff;padding:10px;font-size:13px;height:160px;overflow:auto;white-space:pre-wrap;}
+.preview{width:100%;margin-top:12px;border-radius:4px;}
+.small{font-size:13px;color:#444;}
+.controls button{margin:4px;padding:6px 12px;}
+.text{width:100%;padding:6px;margin:4px 0;}
+.secondary{background:#eee;border:1px solid #aaa;}
+.credits{margin-top:20px;font-size:13px;color:#444;opacity:.7;text-align:right;}
 </style>
 </head>
 
 <body>
-
-<h2>Hybrid OCR: Tesseract + PaddleOCR + Translation</h2>
-<p>High-clarity preprocessing → Kannada + English OCR → Chunked Translation</p>
+<h2>Hybrid OCR: Kannada + English</h2>
 
 <div class="grid">
 
-  <!-- LEFT -->
   <div class="col card">
+    <div class="small">Upload image</div>
+    <input id="fileInput" type="file" accept="image/*"/>
 
-    <div class="small">Upload image (photo/screenshot). Processing starts automatically.</div>
-    <input id="fileInput" type="file" accept="image/*" style="margin-top:8px"/>
-
-    <div style="margin-top:10px" class="controls">
+    <div class="controls">
       <button id="processNow" class="secondary">Process Now</button>
-      <button id="retryBtn" class="secondary">Retry last</button>
     </div>
 
-    <div class="small" style="margin-top:10px">Original Image</div>
-    <img id="preview" class="preview" alt="preview">
+    <div class="small">Original Image</div>
+    <img id="preview" class="preview">
 
-    <div class="small" style="margin-top:10px">Processed Image (used for OCR)</div>
-    <img id="processedPreview" class="preview" alt="processed">
+    <div class="small">Processed Image</div>
+    <img id="processedPreview" class="preview">
 
-    <label class="input-row small" style="margin-top:10px">PaddleOCR server (optional)</label>
-    <input id="paddleEndpoint" class="text" placeholder="https://your-paddle-server/ocr">
-
-    <div style="margin-top:10px" class="small">Pipeline Log</div>
-    <div id="log" class="log">Idle. Upload an image to start.</div>
-
+    <div class="small">Pipeline Log</div>
+    <div id="log" class="log">Idle.</div>
   </div>
 
-  <!-- RIGHT -->
   <div class="col card">
-    <div class="small">OCR Combined Output (Kannada first + English)</div>
-    <div id="ocrBox" class="box">(OCR will appear here)</div>
-    <div class="controls">
-      <button id="downloadOcr" class="secondary">Download OCR</button>
-      <button id="copyOcr" class="secondary">Copy OCR</button>
-    </div>
+    <div class="small">OCR Output</div>
+    <div id="ocrBox" class="box"></div>
 
-    <div style="margin-top:12px" class="small">English Translation (chunked & fallback)</div>
-    <div id="transBox" class="box">(Translation will appear here)</div>
-
-    <div class="controls" style="margin-top:8px">
-      <button id="downloadTrans" class="secondary">Download Translation</button>
-      <button id="retryTrans" class="secondary">Retry Translation</button>
-    </div>
+    <div class="small" style="margin-top:12px">Translation</div>
+    <div id="transBox" class="box"></div>
 
     <div class="credits">Created by Animesh</div>
   </div>
 
 </div>
 
-
-<!-- LIBS -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
 <script>
-let lastDataURL = null;
-let lastOCR = "";
-let lastTrans = "";
+let dataURL=null;
 
-function log(msg){
+function log(m){
   const l=document.getElementById("log");
-  l.textContent+="\n"+msg;
+  l.textContent+="\n"+m;
   l.scrollTop=l.scrollHeight;
 }
 
 function preprocess(img){
-  return new Promise(resolve=>{
+  return new Promise(res=>{
     const c=document.createElement("canvas");
     const ctx=c.getContext("2d");
-    const w=img.width*1.3;
-    const h=img.height*1.3;
-    c.width=w; c.height=h;
 
-    // High clarity Option A
+    // scale with correct interpolation
+    const w=img.width*2;
+    const h=img.height*2;
+    c.width=w;c.height=h;
+    ctx.imageSmoothingEnabled=true;
+    ctx.imageSmoothingQuality="high";
     ctx.drawImage(img,0,0,w,h);
-    ctx.filter="contrast(150%) brightness(115%) grayscale(100%)";
-    ctx.drawImage(c,0,0);
-
-    // Sharpen
-    const imgData=ctx.getImageData(0,0,w,h);
-    const d=imgData.data;
-    for(let i=0;i<d.length;i+=4){
-      d[i]=Math.min(255,d[i]*1.25);
-      d[i+1]=Math.min(255,d[i+1]*1.25);
-      d[i+2]=Math.min(255,d[i+2]*1.25);
-    }
-    ctx.putImageData(imgData,0,0);
 
     document.getElementById("processedPreview").src=c.toDataURL();
-    resolve(c.toDataURL());
+    res(c.toDataURL());
   });
 }
 
-async function runOCR(dataURL){
-  log("Running Tesseract...");
-  const r=await Tesseract.recognize(dataURL,"kan+eng");
+async function runOCR(){
+  log("Running Tesseract…");
+
+  const cfg={
+    tessedit_do_invert:"0",
+    preserve_interword_spaces:"1",
+    user_defined_dpi:"300"
+  };
+
+  const r=await Tesseract.recognize(
+    dataURL,
+    "kan+eng",
+    {
+      psm:6,  // BEST for Kannada docs
+      logger:m=>{}
+    }
+  );
+
   return r.data.text;
 }
 
-
-// ---- FIXED TRANSLATION HERE ----
-function splitChunks(txt){
-  const out=[];
-  let temp="";
-  const maxLen=400;
-
-  const parts=txt.split(/\n|\.|\?|!/);
-
-  for(const p of parts){
-    if((temp+p).length>maxLen){
-      out.push(temp);
-      temp=p;
-    } else temp+=" "+p;
-  }
-  if(temp.trim().length) out.push(temp);
-  return out;
-}
-
-async function translateChunk(chunk){
-  const url=`https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=kn|en`;
-  const r=await fetch(url);
-  const j=await r.json();
+async function translate(text){
+  const api="https://api.mymemory.translated.net/get?q="
+    +encodeURIComponent(text)+"&langpair=kn|en";
+  const j=await fetch(api).then(r=>r.json());
   return j.responseData.translatedText;
 }
 
-async function translateFull(text){
-  const chunks=splitChunks(text);
-  log("Chunks: "+chunks.length);
+async function start(){
+  if(!dataURL)return;
 
-  let final="";
-
-  for(let i=0;i<chunks.length;i++){
-    const t=await translateChunk(chunks[i]);
-    final+=t+"\n";
-  }
-  return final;
-}
-// ---- END FIX ----
-
-
-async function startPipeline(){
-  if(!lastDataURL){alert("Upload image first");return;}
-
-  log("--- PIPE START ---");
   document.getElementById("ocrBox").textContent="";
   document.getElementById("transBox").textContent="";
 
-  const ocr=await runOCR(lastDataURL);
-  lastOCR=ocr;
-  document.getElementById("ocrBox").textContent=ocr;
-  log("OCR done.");
+  const t=await runOCR();
+  document.getElementById("ocrBox").textContent=t;
+  log("OCR done");
 
-  const t=await translateFull(ocr);
-  lastTrans=t;
-  document.getElementById("transBox").textContent=t;
-  log("Translation done.");
+  const x=await translate(t);
+  document.getElementById("transBox").textContent=x;
+  log("Translation done");
 }
 
-document.getElementById("fileInput").addEventListener("change",async ev=>{
-  const file=ev.target.files[0];
-  if(!file)return;
-  log("Image received...");
-
+document.getElementById("fileInput").addEventListener("change",e=>{
+  const f=e.target.files[0];if(!f)return;
   const img=new Image();
   img.onload=async()=>{
-    document.getElementById("preview").src=URL.createObjectURL(file);
-    lastDataURL=await preprocess(img);
-    startPipeline();
+    document.getElementById("preview").src=URL.createObjectURL(f);
+    dataURL=await preprocess(img);
+    start();
   };
-  img.src=URL.createObjectURL(file);
+  img.src=URL.createObjectURL(f);
 });
 
-document.getElementById("processNow").onclick=startPipeline;
-document.getElementById("retryBtn").onclick=startPipeline;
-document.getElementById("retryTrans").onclick=()=>document.getElementById("transBox").textContent=lastTrans;
-
+document.getElementById("processNow").onclick=start;
 </script>
 
 </body>
